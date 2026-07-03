@@ -141,4 +141,5 @@ data:
     ann_file: ${dataset_root + "nuscenes_cam_front_infos_val.pkl"}
 
 
-# python tools/test.py configs/nuscenes/seg/cam_front-fusion-bev256d2-lss.yaml pretrained/bevfusion-seg.pth --eval map
+# CUDA_VISIBLE_DEVICES=2 torchpack dist-run -np 1 python tools/test.py configs/nuscenes/seg/cam_front-fusion-bev256d2-lss.yaml pretrained/bevfusion-seg.pth --eval map
+# CUDA_VISIBLE_DEVICES=2 torchpack dist-run -np 1 python tools/visualize.py  configs/nuscenes/seg/cam_front-fusion-bev256d2-lss.yaml  --mode pred  --checkpoint pretrained/bevfusion-seg.pth  --split val  --out-dir results/nuscenes_1_05/viz  --map-score 0.5

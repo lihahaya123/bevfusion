@@ -377,12 +377,10 @@ class BEVFusion(Base3DFusionModel):
                 elif type == "map":
                     logits = head(x)
                     for k in range(batch_size):
-                        outputs[k].update(
-                            {
-                                "masks_bev": logits[k].cpu(),
-                                "gt_masks_bev": gt_masks_bev[k].cpu(),
-                            }
-                        )
+                        result = {"masks_bev": logits[k].cpu()}
+                        if gt_masks_bev is not None:
+                            result["gt_masks_bev"] = gt_masks_bev[k].cpu()
+                        outputs[k].update(result)
                 else:
                     raise ValueError(f"unsupported head: {type}")
             return outputs

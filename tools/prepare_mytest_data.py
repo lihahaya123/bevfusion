@@ -34,7 +34,17 @@ def parse_args():
         "--point-scale",
         type=float,
         default=0.001,
-        help="Scale applied to txt point coordinates before extrinsic transform.",
+        help="Scale applied to txt point coordinates.",
+    )
+    parser.add_argument(
+        "--points-coord",
+        choices=("camera", "ego"),
+        default="camera",
+        help=(
+            "Coordinate frame of pclCam txt points. Use 'camera' to transform "
+            "points by --camera2lidar; use 'ego' when points are already in "
+            "the LiDAR/ego frame."
+        ),
     )
     parser.add_argument(
         "--info-name",
@@ -181,8 +191,11 @@ def main():
         image = Image.open(rgb_path).convert("RGB")
         image.save(dst_img)
 
-        points_cam = read_points_txt(pcl_path, args.point_scale)
-        points_lidar = transform_points(points_cam, camera2lidar)
+        points = read_points_txt(pcl_path, args.point_scale)
+        if args.points_coord == "camera":
+            points_lidar = transform_points(points, camera2lidar)
+        else:
+            points_lidar = points
         attrs = np.zeros((points_lidar.shape[0], 2), dtype=np.float32)
         points_5d = np.concatenate([points_lidar.astype(np.float32), attrs], axis=1)
         points_5d.tofile(dst_bin)
@@ -248,4 +261,13 @@ if __name__ == "__main__":
 #   --src-root data/mytest/data \
 #   --out-root data/mytest/processed \
 #   --camera2lidar data/mytest/camera2lidar.txt \
+#   --point-scale 0.001
+
+# Option 3: pclCam points 已经是自车轴线
+# Keep --camera2lidar for camera calibration, but do not transform points.
+# python tools/prepare_mytest_data.py \
+#   --src-root data/mytest/data \
+#   --out-root data/mytest/processed \
+#   --camera2lidar data/mytest/camera2lidar.txt \
+#   --points-coord ego \
 #   --point-scale 0.001

@@ -2,11 +2,11 @@
 # data:
 #   train:
 #     dataset:
-#       ann_file: nuscenes_radar/nuscenes_radar_infos_train_radar.pkl
+#       ann_file: nuscenes_radar/nuscenes_radar_infos_train.pkl
 #   val:
-#     ann_file: nuscenes_radar/nuscenes_radar_infos_val_radar.pkl
+#     ann_file: nuscenes_radar/nuscenes_radar_infos_val.pkl
 #   test:
-#     ann_file: nuscenes_radar/nuscenes_radar_infos_val_radar.pkl
+#     ann_file: nuscenes_radar/nuscenes_radar_infos_val.pkl
 
 model:
   decoder:

@@ -2,11 +2,11 @@
 data:
   train:
     dataset:
-      ann_file: nuscenes_radar/nuscenes_radar_infos_train_radar.pkl
+      ann_file: nuscenes_radar/nuscenes_radar_infos_train.pkl
   val:
-    ann_file: nuscenes_radar/nuscenes_radar_infos_val_radar.pkl
+    ann_file: nuscenes_radar/nuscenes_radar_infos_val.pkl
   test:
-    ann_file: nuscenes_radar/nuscenes_radar_infos_val_radar.pkl
+    ann_file: nuscenes_radar/nuscenes_radar_infos_val.pkl
     
 augment2d:
   resize: [[0.38, 0.55], [0.48, 0.48]]
@@ -69,4 +69,3 @@ model:
           - [1.0]
           - [1.0, 1.0]
           - [2.5, 4.0]
-

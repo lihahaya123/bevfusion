@@ -10,18 +10,18 @@ at::Tensor feature_decorator_forward(
   const at::Tensor _x, 
   const at::Tensor _y, 
   const at::Tensor _z, 
-  const double vx, const double vy, const double x_offset, const double y_offset, 
-  int normalize_coords, int use_cluster, int use_center
+  const double vx, const double vy, const double x_offset, const double y_offset,
+  bool normalize_coords, bool use_cluster, bool use_center
 ) {
   int n = _x.size(0);
   int c = _x.size(1);
   int a = _x.size(2);
   auto options = torch::TensorOptions().dtype(_x.dtype()).device(_x.device());
   int decorate_dims = 0;
-  if (use_cluster > 0) {
+  if (use_cluster) {
     decorate_dims += 3;
   }
-  if (use_center > 0) {
+  if (use_center) {
     decorate_dims += 2;
   }
 

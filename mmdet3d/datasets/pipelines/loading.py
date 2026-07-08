@@ -314,6 +314,27 @@ class LoadBEVSegmentation:
 
 
 @PIPELINES.register_module()
+class LoadBEVSegmentationFromFile:
+    def __init__(self, classes: Tuple[str, ...]) -> None:
+        super().__init__()
+        self.classes = classes
+
+    def __call__(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        mask_path = data["bev_mask_path"]
+        mmcv.check_file_exist(mask_path)
+        labels = np.load(mask_path)
+        if labels.ndim != 3:
+            raise ValueError(f"{mask_path} must have shape [C, H, W]")
+        if labels.shape[0] != len(self.classes):
+            raise ValueError(
+                f"{mask_path} has {labels.shape[0]} channels, "
+                f"expected {len(self.classes)}"
+            )
+        data["gt_masks_bev"] = labels.astype(np.int64)
+        return data
+
+
+@PIPELINES.register_module()
 class LoadPointsFromFile:
     """Load Points From File.
 

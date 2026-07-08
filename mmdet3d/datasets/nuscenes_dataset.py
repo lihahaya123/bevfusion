@@ -217,6 +217,8 @@ class NuScenesDataset(Custom3DDataset):
             timestamp=info["timestamp"],
             location=info.get('location', None), 
         )
+        if "bev_mask_path" in info:
+            data["bev_mask_path"] = info["bev_mask_path"]
 
         if data['location'] is None:
             data.pop('location')

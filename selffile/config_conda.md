@@ -161,4 +161,41 @@ vcc fatal: Unsupported gpu architecture 'compute_89' | CUDA 11.3 不支持 sm_89
 
 ---
 
+## 7. BEV 语义图颜色含义
+
+使用以下命令生成预测 BEV 地图：
+
+```bash
+CUDA_VISIBLE_DEVICES=2 torchpack dist-run -np 1 python tools/visualize.py \
+  configs/nuscenes/seg/fusion-bev256d2-lss.yaml \
+  --mode pred \
+  --checkpoint pretrained/bevfusion-seg.pth \
+  --split val \
+  --out-dir results/bevfusion-seg/viz \
+  --map-score 0.5
+```
+
+输出图片位于：
+
+```text
+results/bevfusion-seg/viz/map/*.png
+```
+
+| 颜色 | RGB | 类别 | 含义 |
+|------|-----|------|------|
+| 浅蓝色 | `(166, 206, 227)` | `drivable_area` | 可行驶区域，道路车行区域 |
+| 浅红/粉色 | `(251, 154, 153)` | `ped_crossing` | 人行横道 |
+| 红色 | `(227, 26, 28)` | `walkway` | 人行道、步行区域 |
+| 浅橙色 | `(253, 191, 111)` | `stop_line` | 停止线 |
+| 橙色 | `(255, 127, 0)` | `carpark_area` | 停车区域 |
+| 紫色 | `(106, 61, 154)` | `divider` | 道路/车道分隔线，合并 `road_divider` 和 `lane_divider` |
+| 浅灰色 | `(240, 240, 240)` | background | 未预测为上述类别的背景区域 |
+
+说明：
+
+- `--mode pred` 输出的是模型预测结果，不是 GT。
+- `--map-score 0.5` 表示每个语义通道概率 `>= 0.5` 才会被画出来。
+- `divider` 不区分 `road_divider` 和 `lane_divider`，两者都会显示为同一种紫色。
+- 多个 mask 在同一像素重叠时，`visualize_map()` 按 `map_classes` 顺序上色，后面的类别会覆盖前面的类别；当前 `divider` 最后绘制，因此紫色分隔线会覆盖其它类别。
+
 

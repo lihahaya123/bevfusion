@@ -1,6 +1,6 @@
 dataset_root: data/test_dataset/robot_closed_loop_multi/
 image_size: [256, 704]
-point_cloud_range: [0.0, -1.5, -0.5, 3.0, 1.5, 2.5]
+point_cloud_range: [0.0, -1.52, -0.5, 3.04, 1.52, 2.5]
 voxel_size: [0.005, 0.005, 0.1]
 
 augment2d:
@@ -67,8 +67,8 @@ model:
         out_channels: 80
         image_size: ${image_size}
         feature_size: ${[image_size[0] // 8, image_size[1] // 8]}
-        xbound: [0.0, 3.0, 0.02]
-        ybound: [-1.5, 1.5, 0.02]
+        xbound: [0.0, 3.04, 0.02]
+        ybound: [-1.52, 1.52, 0.02]
         zbound: [-0.5, 2.5, 3.0]
         dbound: [0.1, 5.0, 0.05]
         downsample: 2
@@ -81,7 +81,7 @@ model:
       backbone:
         type: SparseEncoder
         in_channels: 5
-        sparse_shape: [600, 600, 30]
+        sparse_shape: [608, 608, 30]
         output_channels: 128
         order:
           - conv
@@ -135,7 +135,7 @@ model:
       type: BEVSegmentationHead
       in_channels: 512
       grid_transform:
-        input_scope: [[0.0, 3.0, 0.04], [-1.5, 1.5, 0.04]]
+        input_scope: [[0.0, 3.04, 0.04], [-1.52, 1.52, 0.04]]
         output_scope: [[0.0, 3.0, 0.02], [-1.5, 1.5, 0.02]]
       classes: ${map_classes}
       loss: focal

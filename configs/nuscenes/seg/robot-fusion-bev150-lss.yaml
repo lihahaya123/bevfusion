@@ -100,7 +100,7 @@ model:
         block_type: basicblock
   fuser:
     type: ConvFuser
-    in_channels: [80, 256]
+    in_channels: [80, 128]
     out_channels: 256
   decoder:
     backbone:

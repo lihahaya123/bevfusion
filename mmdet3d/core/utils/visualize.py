@@ -37,6 +37,12 @@ MAP_PALETTE = {
     "road_divider": (202, 178, 214),
     "lane_divider": (106, 61, 154),
     "divider": (106, 61, 154),
+    "floor": (160, 160, 160),
+    "carpet": (70, 130, 180),
+    "obstacle": (220, 50, 47),
+    "wall": (90, 90, 90),
+    "threshold": (255, 190, 60),
+    "unknown": (20, 20, 20),
 }
 
 

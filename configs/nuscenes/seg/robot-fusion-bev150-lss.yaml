@@ -304,16 +304,18 @@ data:
   samples_per_gpu: 1
   workers_per_gpu: 2
   train:
-    type: ${dataset_type}
-    dataset_root: ${dataset_root}
-    ann_file: ${dataset_root + "robot_seg_infos_train.pkl"}
-    pipeline: ${robot_train_pipeline}
-    object_classes: ${object_classes}
-    map_classes: ${map_classes}
-    modality: ${input_modality}
-    test_mode: false
-    filter_empty_gt: false
-    box_type_3d: LiDAR
+    type: CBGSDataset
+    dataset:
+      type: ${dataset_type}
+      dataset_root: ${dataset_root}
+      ann_file: ${dataset_root + "robot_seg_infos_train.pkl"}
+      pipeline: ${robot_train_pipeline}
+      object_classes: ${object_classes}
+      map_classes: ${map_classes}
+      modality: ${input_modality}
+      test_mode: false
+      filter_empty_gt: false
+      box_type_3d: LiDAR
   val:
     type: ${dataset_type}
     dataset_root: ${dataset_root}

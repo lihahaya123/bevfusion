@@ -62,6 +62,11 @@ class BaseTransform(nn.Module):
         self.D = self.frustum.shape[0]
         self.fp16_enabled = False
 
+    def _load_from_state_dict(self, state_dict, prefix, *args, **kwargs):
+        for name in ["dx", "bx", "nx", "frustum"]:
+            state_dict.pop(prefix + name, None)
+        super()._load_from_state_dict(state_dict, prefix, *args, **kwargs)
+
     @force_fp32()
     def create_frustum(self):
         iH, iW = self.image_size

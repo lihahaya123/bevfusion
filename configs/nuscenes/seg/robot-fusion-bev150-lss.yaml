@@ -1,4 +1,4 @@
-dataset_root: data/test_dataset/test_dataset/robot_closed_loop_multi/
+dataset_root: data/test_dataset/robot_closed_loop_multi/
 image_size: [256, 704]
 point_cloud_range: [0.0, -1.5, -0.5, 3.0, 1.5, 2.5]
 voxel_size: [0.005, 0.005, 0.1]

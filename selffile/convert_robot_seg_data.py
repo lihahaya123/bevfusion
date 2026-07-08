@@ -87,6 +87,10 @@ def normalize_intrinsic(value):
     return mat
 
 
+def opengl_camera_to_cv_camera_transform():
+    return np.diag([1.0, -1.0, -1.0, 1.0]).astype(np.float32)
+
+
 def resolve_dataset_path(src_root, raw_path):
     raw = Path(str(raw_path).replace("\\", "/"))
     if raw.is_absolute():
@@ -142,6 +146,7 @@ def make_sweeps(info, scene_infos, src_root, max_sweeps):
 
 def convert_info(info, all_by_scene, src_root, camera_name, max_sweeps):
     cam2base = normalize_matrix(info["camera2base"])
+    cam2base = cam2base @ opengl_camera_to_cv_camera_transform()
     lidar2base = normalize_matrix(info["lidar2base"])
     base2map = normalize_matrix(info["T_map_base"])
     cam2lidar = np.linalg.inv(lidar2base) @ cam2base

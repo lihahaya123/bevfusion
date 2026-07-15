@@ -141,3 +141,6 @@ runs/*
 data/
 pretrained/
 results/
+
+# Codex isolated worktrees
+.worktrees/

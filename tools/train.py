@@ -2,7 +2,13 @@ import argparse
 import copy
 import os
 import random
+import sys
 import time
+from pathlib import Path
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
 
 import numpy as np
 import torch
@@ -14,7 +20,12 @@ from torchpack.utils.config import configs
 from mmdet3d.apis import train_model
 from mmdet3d.datasets import build_dataset
 from mmdet3d.models import build_model
-from mmdet3d.utils import get_root_logger, convert_sync_batchnorm, recursive_eval
+from mmdet3d.utils import (
+    convert_sync_batchnorm,
+    get_root_logger,
+    load_checkpoint_selectively,
+    recursive_eval,
+)
 
 
 def main():
@@ -67,6 +78,18 @@ def main():
 
     model = build_model(cfg.model)
     model.init_weights()
+    if (
+        cfg.load_from
+        and not cfg.resume_from
+        and cfg.get("load_from_ignore_shape_mismatch", False)
+    ):
+        load_checkpoint_selectively(
+            model,
+            cfg.load_from,
+            skip_prefixes=cfg.get("load_from_skip_prefixes", []),
+            logger=logger,
+        )
+        cfg.load_from = None
     if cfg.get("sync_bn", None):
         if not isinstance(cfg["sync_bn"], dict):
             cfg["sync_bn"] = dict(exclude=[])

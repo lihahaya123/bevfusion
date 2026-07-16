@@ -335,6 +335,55 @@ class LoadBEVSegmentationFromFile:
 
 
 @PIPELINES.register_module()
+class LoadRobotBEVSegmentation:
+    """Load Robot BEV labels and effective supervision mask from files."""
+
+    def __init__(self, classes: Tuple[str, ...]) -> None:
+        super().__init__()
+        self.classes = tuple(classes)
+
+    def __call__(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        mask_path = data["bev_mask_path"]
+        observed_path = data["bev_observed_mask_path"]
+        mmcv.check_file_exist(mask_path)
+        mmcv.check_file_exist(observed_path)
+        labels = np.load(mask_path, allow_pickle=False)
+        observed = np.load(observed_path, allow_pickle=False)
+        if labels.shape != (len(self.classes), 150, 150):
+            raise ValueError(
+                f"{mask_path} must have shape "
+                f"({len(self.classes)}, 150, 150), got {labels.shape}"
+            )
+        if observed.shape != (150, 150):
+            raise ValueError(
+                f"{observed_path} must have shape (150, 150), "
+                f"got {observed.shape}"
+            )
+        class_validity = np.asarray(data["class_validity"], dtype=np.uint8)
+        if class_validity.shape != (len(self.classes),):
+            raise ValueError(
+                f"class_validity must have shape ({len(self.classes)},), "
+                f"got {class_validity.shape}"
+            )
+        supervision = observed[None, :, :] * class_validity[:, None, None]
+        supervision_path = data.get("bev_supervision_mask_path")
+        if supervision_path is not None:
+            mmcv.check_file_exist(supervision_path)
+            regional = np.load(supervision_path, allow_pickle=False)
+            if regional.shape != labels.shape:
+                raise ValueError(
+                    f"{supervision_path} must have shape {labels.shape}, "
+                    f"got {regional.shape}"
+                )
+            supervision = supervision * regional
+
+        data["gt_masks_bev"] = labels.astype(np.float32)
+        data["gt_supervision_mask_bev"] = supervision.astype(np.float32)
+        data["gt_observed_mask_bev"] = observed.astype(np.float32)
+        return data
+
+
+@PIPELINES.register_module()
 class LoadPointsFromFile:
     """Load Points From File.
 

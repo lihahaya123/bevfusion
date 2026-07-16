@@ -104,6 +104,15 @@ class DefaultFormatBundle3D:
             results["img"] = DC(torch.stack(results["img"]), stack=True)
 
         for key in [
+            "gt_masks_bev",
+            "gt_supervision_mask_bev",
+            "gt_observed_mask_bev",
+        ]:
+            if key not in results:
+                continue
+            results[key] = DC(to_tensor(results[key]), stack=True)
+
+        for key in [
             "proposals",
             "gt_bboxes",
             "gt_bboxes_ignore",

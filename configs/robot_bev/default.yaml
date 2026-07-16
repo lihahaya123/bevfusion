@@ -1,0 +1,68 @@
+dataset_type: RobotBEVDataset
+dataset_root: data/replica_robot_bev_v3/
+
+image_size: [256, 704]
+point_cloud_range: [0.0, -1.52, -0.5, 3.04, 1.52, 2.5]
+voxel_size: [0.005, 0.005, 0.1]
+
+gt_paste_stop_epoch: -1
+reduce_beams: null
+load_dim: 5
+use_dim: 5
+load_augmented: null
+
+object_classes: []
+map_classes:
+  - floor
+  - carpet
+  - obstacle
+  - wall
+  - furniture
+  - other
+
+input_modality:
+  use_lidar: true
+  use_camera: true
+  use_radar: false
+  use_map: false
+  use_external: false
+
+augment2d:
+  resize: [[1.1, 1.1], [1.1, 1.1]]
+  rotate: [0.0, 0.0]
+  gridmask:
+    prob: 0.0
+    fixed_prob: true
+
+augment3d:
+  scale: [1.0, 1.0]
+  rotate: [0.0, 0.0]
+  translate: 0.0
+
+seed: 0
+deterministic: false
+cudnn_benchmark: false
+
+max_epochs: 20
+runner:
+  type: CustomEpochBasedRunner
+  max_epochs: ${max_epochs}
+
+checkpoint_config:
+  interval: 1
+  max_keep_ckpts: 1
+
+log_config:
+  interval: 50
+  hooks:
+    -
+      type: TextLoggerHook
+    -
+      type: TensorboardLoggerHook
+
+load_from: null
+resume_from: null
+
+fp16:
+  loss_scale:
+    growth_interval: 2000

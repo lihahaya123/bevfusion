@@ -44,6 +44,17 @@ def sigmoid_focal_loss(
     return loss
 
 
+def masked_reduce_loss(
+    raw_loss: torch.Tensor,
+    mask: torch.Tensor,
+) -> torch.Tensor:
+    mask = mask.to(device=raw_loss.device, dtype=raw_loss.dtype)
+    valid = mask.sum()
+    if valid.item() <= 0:
+        return raw_loss.sum() * 0.0
+    return (raw_loss * mask).sum() / valid.clamp_min(1.0)
+
+
 class BEVGridTransform(nn.Module):
     def __init__(
         self,
@@ -116,6 +127,7 @@ class BEVSegmentationHead(nn.Module):
         self,
         x: torch.Tensor,
         target: Optional[torch.Tensor] = None,
+        supervision_mask: Optional[torch.Tensor] = None,
     ) -> Union[torch.Tensor, Dict[str, Any]]:
         if isinstance(x, (list, tuple)):
             x = x[0]
@@ -124,15 +136,35 @@ class BEVSegmentationHead(nn.Module):
         x = self.classifier(x)
 
         if self.training:
+            if target is None:
+                raise ValueError("target is required when training")
+            if supervision_mask is None:
+                supervision_mask = torch.ones_like(target)
+            elif supervision_mask.ndim == 3:
+                supervision_mask = supervision_mask[:, None, :, :].expand_as(target)
+            else:
+                supervision_mask = supervision_mask.to(target.device)
             losses = {}
             for index, name in enumerate(self.classes):
                 if self.loss == "xent":
-                    loss = sigmoid_xent_loss(x[:, index], target[:, index])
+                    raw_loss = sigmoid_xent_loss(
+                        x[:, index],
+                        target[:, index],
+                        reduction="none",
+                    )
                 elif self.loss == "focal":
-                    loss = sigmoid_focal_loss(x[:, index], target[:, index])
+                    raw_loss = sigmoid_focal_loss(
+                        x[:, index],
+                        target[:, index],
+                        reduction="none",
+                    )
                 else:
                     raise ValueError(f"unsupported loss: {self.loss}")
+                loss = masked_reduce_loss(raw_loss, supervision_mask[:, index])
                 losses[f"{name}/{self.loss}"] = loss
+                losses[f"{name}/valid_pixels"] = (
+                    supervision_mask[:, index].sum().detach()
+                )
             return losses
         else:
             return torch.sigmoid(x)

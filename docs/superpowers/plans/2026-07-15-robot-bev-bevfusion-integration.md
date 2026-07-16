@@ -36,7 +36,7 @@
 - `mmdet3d/utils/checkpoint.py`: name-and-shape selective checkpoint loader/report.
 - `mmdet3d/apis/train.py`: resume/selective-load/legacy-load precedence.
 - `configs/robot_bev/default.yaml`: canonical dataset and pipeline defaults.
-- `configs/robot_bev/seg/camera_lidar_lss.yaml`: robot camera+LiDAR segmentation model and fine-tuning settings.
+- `configs/robot_bev/seg/robotbev_camera_lidar_lss.yaml`: robot camera+LiDAR segmentation model and fine-tuning settings.
 - `docs/robot_bev_training.md`: local smoke, remote full training, evaluation, and failure recovery commands.
 - `tests/test_robot_bev_converter.py`, `tests/test_robot_bev_pipeline.py`, `tests/test_bev_valid_mask.py`, `tests/test_robot_bev_checkpoint.py`, `tests/test_robot_bev_config.py`: TDD coverage.
 
@@ -690,7 +690,7 @@ git commit -m "feat: selectively load robot BEV pretrained weights"
 
 **Files:**
 - Create: `configs/robot_bev/default.yaml`
-- Create: `configs/robot_bev/seg/camera_lidar_lss.yaml`
+- Create: `configs/robot_bev/seg/robotbev_camera_lidar_lss.yaml`
 - Test: `tests/test_robot_bev_config.py`
 
 **Interfaces:**
@@ -708,7 +708,7 @@ from mmdet3d.utils import recursive_eval
 
 
 def test_robot_bev_config_contract():
-    configs.load("configs/robot_bev/seg/camera_lidar_lss.yaml", recursive=True)
+    configs.load("configs/robot_bev/seg/robotbev_camera_lidar_lss.yaml", recursive=True)
     cfg = Config(recursive_eval(configs))
     assert cfg.map_classes == [
         "floor", "carpet", "obstacle", "wall", "furniture", "other"
@@ -730,7 +730,7 @@ def test_robot_bev_config_contract():
 
 Run: `pytest -q tests/test_robot_bev_config.py`
 
-Expected: FAIL because `configs/robot_bev/seg/camera_lidar_lss.yaml` does not exist.
+Expected: FAIL because `configs/robot_bev/seg/robotbev_camera_lidar_lss.yaml` does not exist.
 
 - [ ] **Step 3: Create dataset and pipeline defaults**
 
@@ -844,7 +844,7 @@ Expected: PASS.
 Run with an existing converted smoke root:
 
 ```bash
-python -c "from torchpack.utils.config import configs; from mmcv import Config; from mmdet3d.utils import recursive_eval; from mmdet3d.datasets import build_dataset; from mmdet3d.models import build_model; configs.load('configs/robot_bev/seg/camera_lidar_lss.yaml', recursive=True); cfg=Config(recursive_eval(configs)); print(len(build_dataset(cfg.data.train))); print(type(build_model(cfg.model)).__name__)"
+python -c "from torchpack.utils.config import configs; from mmcv import Config; from mmdet3d.utils import recursive_eval; from mmdet3d.datasets import build_dataset; from mmdet3d.models import build_model; configs.load('configs/robot_bev/seg/robotbev_camera_lidar_lss.yaml', recursive=True); cfg=Config(recursive_eval(configs)); print(len(build_dataset(cfg.data.train))); print(type(build_model(cfg.model)).__name__)"
 ```
 
 Expected: dataset length equals the converted smoke train count; model type is `BEVFusion`.
@@ -853,7 +853,7 @@ Expected: dataset length equals the converted smoke train count; model type is `
 
 ```bash
 git add configs/robot_bev/default.yaml \
-  configs/robot_bev/seg/camera_lidar_lss.yaml tests/test_robot_bev_config.py
+  configs/robot_bev/seg/robotbev_camera_lidar_lss.yaml tests/test_robot_bev_config.py
 git commit -m "feat: add robot BEV segmentation config"
 ```
 
@@ -892,7 +892,7 @@ from mmdet3d.utils import recursive_eval
     reason="set ROBOT_BEV_DATA_ROOT to a validated converted smoke dataset",
 )
 def test_one_batch_forward_backward_is_finite():
-    configs.load("configs/robot_bev/seg/camera_lidar_lss.yaml", recursive=True)
+    configs.load("configs/robot_bev/seg/robotbev_camera_lidar_lss.yaml", recursive=True)
     cfg = Config(recursive_eval(configs))
     root = os.environ["ROBOT_BEV_DATA_ROOT"].rstrip("/") + "/"
     cfg.data.train.dataset_root = root
@@ -946,7 +946,7 @@ Generate a separate canonical 32-frame training smoke root with the Plan-1 gener
 
 ```bash
 CUDA_VISIBLE_DEVICES=0 torchpack dist-run -np 1 python tools/train.py \
-  configs/robot_bev/seg/camera_lidar_lss.yaml \
+  configs/robot_bev/seg/robotbev_camera_lidar_lss.yaml \
   --run-dir runs/robot-bev-overfit \
   --data.samples_per_gpu 1 \
   --data.workers_per_gpu 0 \
@@ -968,12 +968,12 @@ python tools/data_converter/robot_bev_converter.py \
   --root /data/replica_robot_bev_v3 --split all --max-sweeps 5
 
 CUDA_VISIBLE_DEVICES=0,1,2,3 torchpack dist-run -np 4 python tools/train.py \
-  configs/robot_bev/seg/camera_lidar_lss.yaml \
+  configs/robot_bev/seg/robotbev_camera_lidar_lss.yaml \
   --run-dir runs/robot-bev-replica-v3 \
   --dataset_root /data/replica_robot_bev_v3/
 
 CUDA_VISIBLE_DEVICES=0 torchpack dist-run -np 1 python tools/test.py \
-  configs/robot_bev/seg/camera_lidar_lss.yaml \
+  configs/robot_bev/seg/robotbev_camera_lidar_lss.yaml \
   runs/robot-bev-replica-v3/latest.pth \
   --eval map \
   --cfg-options \

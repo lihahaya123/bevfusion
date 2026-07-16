@@ -551,7 +551,7 @@ IoU 的 TP、FP 和 FN 只在 supervision mask 为 1 的位置累计。评估输
 configs/robot_bev/
 ├── default.yaml
 └── seg/
-    └── camera_lidar_lss.yaml
+    └── robotbev_camera_lidar_lss.yaml
 ```
 
 初始配置固定：

@@ -1,0 +1,403 @@
+dataset_type: RobotBEVDataset
+dataset_root: data/replica_robot_bev_v3/
+image_size: [256, 704]
+point_cloud_range: [0.0, -1.52, -0.5, 3.04, 1.52, 2.5]
+voxel_size: [0.005, 0.005, 0.1]
+
+reduce_beams: null
+load_dim: 5
+use_dim: 5
+load_augmented: null
+
+object_classes: []
+map_classes:
+  - floor
+  - carpet
+  - obstacle
+  - wall
+  - furniture
+  - other
+
+input_modality:
+  use_lidar: true
+  use_camera: true
+  use_radar: false
+  use_map: false
+  use_external: false
+
+augment2d:
+  resize: [[1.1, 1.1], [1.1, 1.1]]
+  rotate: [0.0, 0.0]
+  gridmask:
+    prob: 0.0
+    fixed_prob: true
+
+augment3d:
+  scale: [1.0, 1.0]
+  rotate: [0.0, 0.0]
+  translate: 0.0
+
+model:
+  type: BEVFusion
+  encoders:
+    camera:
+      backbone:
+        type: SwinTransformer
+        embed_dims: 96
+        depths: [2, 2, 6, 2]
+        num_heads: [3, 6, 12, 24]
+        window_size: 7
+        mlp_ratio: 4
+        qkv_bias: true
+        qk_scale: null
+        drop_rate: 0.
+        attn_drop_rate: 0.
+        drop_path_rate: 0.3
+        patch_norm: true
+        out_indices: [1, 2, 3]
+        with_cp: false
+        convert_weights: true
+        init_cfg: null
+      neck:
+        type: GeneralizedLSSFPN
+        in_channels: [192, 384, 768]
+        out_channels: 256
+        start_level: 0
+        num_outs: 3
+        norm_cfg:
+          type: BN2d
+          requires_grad: true
+        act_cfg:
+          type: ReLU
+          inplace: true
+        upsample_cfg:
+          mode: bilinear
+          align_corners: false
+      vtransform:
+        type: LSSTransform
+        in_channels: 256
+        out_channels: 80
+        image_size: ${image_size}
+        feature_size: ${[image_size[0] // 8, image_size[1] // 8]}
+        xbound: [0.0, 3.04, 0.02]
+        ybound: [-1.52, 1.52, 0.02]
+        zbound: [-0.5, 2.5, 3.0]
+        dbound: [0.1, 5.0, 0.05]
+        downsample: 2
+    lidar:
+      voxelize:
+        max_num_points: 10
+        point_cloud_range: ${point_cloud_range}
+        voxel_size: ${voxel_size}
+        max_voxels: [60000, 90000]
+      backbone:
+        type: SparseEncoder
+        in_channels: 5
+        sparse_shape: [608, 608, 30]
+        output_channels: 128
+        order:
+          - conv
+          - norm
+          - act
+        encoder_channels:
+          - [16, 16, 32]
+          - [32, 32, 64]
+          - [64, 64, 128]
+          - [128, 128]
+        encoder_paddings:
+          - [0, 0, 1]
+          - [0, 0, 1]
+          - [0, 0, [1, 1, 0]]
+          - [0, 0]
+        block_type: basicblock
+  fuser:
+    type: ConvFuser
+    in_channels: [80, 128]
+    out_channels: 256
+  decoder:
+    backbone:
+      type: SECOND
+      in_channels: 256
+      out_channels: [128, 256]
+      layer_nums: [5, 5]
+      layer_strides: [1, 2]
+      norm_cfg:
+        type: BN
+        eps: 1.0e-3
+        momentum: 0.01
+      conv_cfg:
+        type: Conv2d
+        bias: false
+    neck:
+      type: SECONDFPN
+      in_channels: [128, 256]
+      out_channels: [256, 256]
+      upsample_strides: [1, 2]
+      norm_cfg:
+        type: BN
+        eps: 1.0e-3
+        momentum: 0.01
+      upsample_cfg:
+        type: deconv
+        bias: false
+      use_conv_for_no_stride: true
+  heads:
+    object: null
+    map:
+      type: BEVSegmentationHead
+      in_channels: 512
+      grid_transform:
+        input_scope: [[0.0, 3.04, 0.04], [-1.52, 1.52, 0.04]]
+        output_scope: [[0.0, 3.0, 0.02], [-1.5, 1.5, 0.02]]
+      classes: ${map_classes}
+      loss: focal
+
+robot_train_pipeline:
+  -
+    type: LoadMultiViewImageFromFiles
+    to_float32: true
+  -
+    type: LoadPointsFromFile
+    coord_type: LIDAR
+    load_dim: ${load_dim}
+    use_dim: ${use_dim}
+    reduce_beams: ${reduce_beams}
+    load_augmented: ${load_augmented}
+  -
+    type: LoadPointsFromMultiSweeps
+    sweeps_num: 5
+    load_dim: ${load_dim}
+    use_dim: ${use_dim}
+    reduce_beams: ${reduce_beams}
+    pad_empty_sweeps: true
+    remove_close: false
+    load_augmented: ${load_augmented}
+  -
+    type: LoadAnnotations3D
+    with_bbox_3d: true
+    with_label_3d: true
+    with_attr_label: false
+  -
+    type: ImageAug3D
+    final_dim: ${image_size}
+    resize_lim: ${augment2d.resize[0]}
+    bot_pct_lim: [0.0, 0.0]
+    rot_lim: ${augment2d.rotate}
+    rand_flip: false
+    is_train: true
+  -
+    type: GlobalRotScaleTrans
+    resize_lim: ${augment3d.scale}
+    rot_lim: ${augment3d.rotate}
+    trans_lim: ${augment3d.translate}
+    is_train: true
+  -
+    type: LoadRobotBEVSegmentation
+    classes: ${map_classes}
+  -
+    type: PointsRangeFilter
+    point_cloud_range: ${point_cloud_range}
+  -
+    type: ImageNormalize
+    mean: [0.485, 0.456, 0.406]
+    std: [0.229, 0.224, 0.225]
+  -
+    type: GridMask
+    use_h: true
+    use_w: true
+    max_epoch: ${max_epochs}
+    rotate: 1
+    offset: false
+    ratio: 0.5
+    mode: 1
+    prob: ${augment2d.gridmask.prob}
+    fixed_prob: ${augment2d.gridmask.fixed_prob}
+  -
+    type: PointShuffle
+  -
+    type: DefaultFormatBundle3D
+    classes: ${object_classes}
+  -
+    type: Collect3D
+    keys:
+      - img
+      - points
+      - gt_bboxes_3d
+      - gt_labels_3d
+      - gt_masks_bev
+      - gt_supervision_mask_bev
+    meta_keys:
+      - camera_intrinsics
+      - camera2ego
+      - lidar2ego
+      - lidar2camera
+      - camera2lidar
+      - lidar2image
+      - img_aug_matrix
+      - lidar_aug_matrix
+
+robot_test_pipeline:
+  -
+    type: LoadMultiViewImageFromFiles
+    to_float32: true
+  -
+    type: LoadPointsFromFile
+    coord_type: LIDAR
+    load_dim: ${load_dim}
+    use_dim: ${use_dim}
+    reduce_beams: ${reduce_beams}
+    load_augmented: ${load_augmented}
+  -
+    type: LoadPointsFromMultiSweeps
+    sweeps_num: 10
+    load_dim: ${load_dim}
+    use_dim: ${use_dim}
+    reduce_beams: ${reduce_beams}
+    pad_empty_sweeps: true
+    remove_close: false
+    test_mode: true
+    load_augmented: ${load_augmented}
+  -
+    type: LoadAnnotations3D
+    with_bbox_3d: true
+    with_label_3d: true
+    with_attr_label: false
+  -
+    type: ImageAug3D
+    final_dim: ${image_size}
+    resize_lim: ${augment2d.resize[1]}
+    bot_pct_lim: [0.0, 0.0]
+    rot_lim: [0.0, 0.0]
+    rand_flip: false
+    is_train: false
+  -
+    type: GlobalRotScaleTrans
+    resize_lim: [1.0, 1.0]
+    rot_lim: [0.0, 0.0]
+    trans_lim: 0.0
+    is_train: false
+  -
+    type: LoadRobotBEVSegmentation
+    classes: ${map_classes}
+  -
+    type: PointsRangeFilter
+    point_cloud_range: ${point_cloud_range}
+  -
+    type: ImageNormalize
+    mean: [0.485, 0.456, 0.406]
+    std: [0.229, 0.224, 0.225]
+  -
+    type: DefaultFormatBundle3D
+    classes: ${object_classes}
+  -
+    type: Collect3D
+    keys:
+      - img
+      - points
+      - gt_bboxes_3d
+      - gt_labels_3d
+      - gt_masks_bev
+      - gt_supervision_mask_bev
+    meta_keys:
+      - camera_intrinsics
+      - camera2ego
+      - lidar2ego
+      - lidar2camera
+      - camera2lidar
+      - lidar2image
+      - img_aug_matrix
+      - lidar_aug_matrix
+
+data:
+  samples_per_gpu: 1
+  workers_per_gpu: 2
+  train:
+    type: ${dataset_type}
+    dataset_root: ${dataset_root}
+    ann_file: ${dataset_root + "bevfusion_infos_train.pkl"}
+    pipeline: ${robot_train_pipeline}
+    object_classes: ${object_classes}
+    map_classes: ${map_classes}
+    modality: ${input_modality}
+    test_mode: false
+    filter_empty_gt: false
+    box_type_3d: LiDAR
+  val:
+    type: ${dataset_type}
+    dataset_root: ${dataset_root}
+    ann_file: ${dataset_root + "bevfusion_infos_val.pkl"}
+    pipeline: ${robot_test_pipeline}
+    object_classes: ${object_classes}
+    map_classes: ${map_classes}
+    modality: ${input_modality}
+    test_mode: false
+    filter_empty_gt: false
+    box_type_3d: LiDAR
+  test:
+    type: ${dataset_type}
+    dataset_root: ${dataset_root}
+    ann_file: ${dataset_root + "bevfusion_infos_test.pkl"}
+    pipeline: ${robot_test_pipeline}
+    object_classes: ${object_classes}
+    map_classes: ${map_classes}
+    modality: ${input_modality}
+    test_mode: true
+    filter_empty_gt: false
+    box_type_3d: LiDAR
+
+evaluation:
+  interval: 1
+  pipeline: ${robot_test_pipeline}
+
+optimizer:
+  type: AdamW
+  lr: 1.0e-4
+  weight_decay: 0.01
+  paramwise_cfg:
+    custom_keys:
+      absolute_pos_embed:
+        decay_mult: 0
+      relative_position_bias_table:
+        decay_mult: 0
+
+optimizer_config:
+  grad_clip:
+    max_norm: 35
+    norm_type: 2
+
+lr_config:
+  policy: cyclic
+
+momentum_config:
+  policy: cyclic
+
+seed: 0
+deterministic: false
+cudnn_benchmark: false
+
+max_epochs: 20
+runner:
+  type: CustomEpochBasedRunner
+  max_epochs: ${max_epochs}
+
+checkpoint_config:
+  interval: 1
+  max_keep_ckpts: 1
+
+log_config:
+  interval: 50
+  hooks:
+    -
+      type: TextLoggerHook
+    -
+      type: TensorboardLoggerHook
+
+load_from: checkpoint/bevfusion-seg.pth
+load_from_ignore_shape_mismatch: true
+load_from_skip_prefixes:
+  - heads.map.classifier.6
+resume_from: null
+
+fp16:
+  loss_scale:
+    growth_interval: 2000

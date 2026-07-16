@@ -240,9 +240,10 @@ class BEVFusion(Base3DFusionModel):
         img_aug_matrix,
         lidar_aug_matrix,
         metas,
-        depths,
+        depths=None,
         radar=None,
         gt_masks_bev=None,
+        gt_supervision_mask_bev=None,
         gt_bboxes_3d=None,
         gt_labels_3d=None,
         **kwargs,
@@ -265,6 +266,7 @@ class BEVFusion(Base3DFusionModel):
                 depths,
                 radar,
                 gt_masks_bev,
+                gt_supervision_mask_bev,
                 gt_bboxes_3d,
                 gt_labels_3d,
                 **kwargs,
@@ -288,6 +290,7 @@ class BEVFusion(Base3DFusionModel):
         depths=None,
         radar=None,
         gt_masks_bev=None,
+        gt_supervision_mask_bev=None,
         gt_bboxes_3d=None,
         gt_labels_3d=None,
         **kwargs,
@@ -346,7 +349,7 @@ class BEVFusion(Base3DFusionModel):
                     pred_dict = head(x, metas)
                     losses = head.loss(gt_bboxes_3d, gt_labels_3d, pred_dict)
                 elif type == "map":
-                    losses = head(x, gt_masks_bev)
+                    losses = head(x, gt_masks_bev, gt_supervision_mask_bev)
                 else:
                     raise ValueError(f"unsupported head: {type}")
                 for name, val in losses.items():
@@ -380,6 +383,10 @@ class BEVFusion(Base3DFusionModel):
                         result = {"masks_bev": logits[k].cpu()}
                         if gt_masks_bev is not None:
                             result["gt_masks_bev"] = gt_masks_bev[k].cpu()
+                        if gt_supervision_mask_bev is not None:
+                            result["gt_supervision_mask_bev"] = (
+                                gt_supervision_mask_bev[k].cpu()
+                            )
                         outputs[k].update(result)
                 else:
                     raise ValueError(f"unsupported head: {type}")

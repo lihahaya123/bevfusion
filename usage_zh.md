@@ -1,8 +1,8 @@
 # Robot BEV 数据生成与转换使用说明
 
 本文档说明如何从 Habitat-Sim/Replica 渲染标准 `robot_bev_dataset v3`
-数据，并转换成 BEVFusion 可读取的训练索引。当前阶段只覆盖训练流程之前的
-数据输入准备。
+数据，转换成 BEVFusion 可读取的训练索引，并使用当前 RobotBEV 训练配置
+打通训练链路。
 
 整体流程如下：
 
@@ -11,7 +11,8 @@ Habitat-Sim/Replica 渲染
   -> robot_bev_dataset v3 标准数据
   -> 严格校验与几何诊断
   -> BEVFusion infos 转换
-  -> 交给训练配置读取
+  -> RobotBEVDataset 读取
+  -> BEVFusion masked BEV segmentation 训练
 ```
 
 ## 代码位置
@@ -338,4 +339,181 @@ data_generation/robot_bev/docs/add_new_source.md
 4. diagnostics 中几何图人工确认通过
 5. bevfusion_infos_train.pkl / val.pkl / test.pkl 已生成
 6. 训练配置的数据根目录指向同一个 <root>
+7. 训练前冒烟检查通过
+```
+
+## RobotBEV 训练用法
+
+当前训练适配代码包括：
+
+```text
+configs/robot_bev/README_zh.md
+configs/robot_bev/seg/robotbev_camera_lidar_lss.yaml
+mmdet3d/datasets/robot_bev_dataset.py
+mmdet3d/datasets/pipelines/loading.py        # LoadRobotBEVSegmentation
+mmdet3d/models/heads/segm/vanilla.py         # masked focal/xent loss
+tools/check_robot_bev_training.py            # 训练前冒烟检查
+```
+
+训练配置默认读取：
+
+```text
+data/replica_robot_bev_v3/bevfusion_infos_train.pkl
+data/replica_robot_bev_v3/bevfusion_infos_val.pkl
+data/replica_robot_bev_v3/bevfusion_infos_test.pkl
+```
+
+如果实际数据在其他目录，训练或检查时用 `dataset_root=...` 覆盖。注意
+`dataset_root` 末尾要保留 `/`，因为配置中使用了字符串拼接：
+
+```text
+ann_file: ${dataset_root + "bevfusion_infos_train.pkl"}
+```
+
+```bash
+docker run -it \
+  --gpus all \
+  --name bevfusion_dev \
+  -v "$(pwd)":/workspace \
+  --shm-size 16g \
+  bevfusion \
+  /bin/bash
+```
+
+### 训练前冒烟检查
+
+进入训练 Docker 后先执行：
+
+```bash
+cd /path/to/bevfusion
+export PYTHONPATH="$PWD:${PYTHONPATH:-}"
+
+python tools/check_robot_bev_training.py \
+  configs/robot_bev/seg/robotbev_camera_lidar_lss.yaml
+```
+
+无 CUDA 环境会只检查 dataset、dataloader 和 model 构建；有 CUDA 环境会额外跑
+一个 batch 的 forward/backward。检查通过时应看到：
+
+```text
+[forward] one-batch forward/backward passed
+```
+
+如果是在宿主机直接启动 Docker，必须加 `--gpus all`，否则容器看不到 GPU：
+
+```bash
+docker run --rm --gpus all \
+  -v /path/to/bevfusion:/workspace \
+  -w /workspace \
+  bevfusion:latest \
+  python tools/check_robot_bev_training.py \
+    configs/robot_bev/seg/robotbev_camera_lidar_lss.yaml
+```
+
+只想检查数据和模型构建、不跑前后向时：
+
+```bash
+python tools/check_robot_bev_training.py \
+  configs/robot_bev/seg/robotbev_camera_lidar_lss.yaml \
+  --skip-forward
+```
+
+远端正式数据冒烟检查：
+
+```bash
+python tools/check_robot_bev_training.py \
+  configs/robot_bev/seg/robotbev_camera_lidar_lss.yaml \
+  dataset_root=/mnt/datasets/replica_robot_bev_v3/
+```
+
+### 启动训练
+
+正式单卡训练：
+
+```bash
+torchpack dist-run -np 1 python tools/train.py \
+  configs/robot_bev/seg/robotbev_camera_lidar_lss.yaml \
+  --run-dir work_dirs/robot_bev/camera_lidar_lss
+```
+
+远端正式数据训练时覆盖数据根目录：
+
+```bash
+torchpack dist-run -np 1 python tools/train.py \
+  configs/robot_bev/seg/robotbev_camera_lidar_lss.yaml \
+  --run-dir work_dirs/robot_bev/replica_18x600 \
+  dataset_root=/mnt/datasets/replica_robot_bev_v3/
+```
+
+多卡训练时把 `-np 1` 改成 GPU 数量，例如 4 卡：
+
+```bash
+torchpack dist-run -np 4 python tools/train.py \
+  configs/robot_bev/seg/robotbev_camera_lidar_lss.yaml \
+  --run-dir work_dirs/robot_bev/replica_18x600 \
+  dataset_root=/mnt/datasets/replica_robot_bev_v3/
+```
+
+如果从 Docker 外部直接启动训练：
+
+```bash
+docker run --rm --gpus all \
+  -v /path/to/bevfusion:/workspace \
+  -v /mnt/datasets/replica_robot_bev_v3:/mnt/datasets/replica_robot_bev_v3 \
+  -w /workspace \
+  bevfusion:latest \
+  torchpack dist-run -np 1 python tools/train.py \
+    configs/robot_bev/seg/robotbev_camera_lidar_lss.yaml \
+    --run-dir work_dirs/robot_bev/replica_18x600 \
+    dataset_root=/mnt/datasets/replica_robot_bev_v3/
+```
+
+### 恢复训练
+
+如果训练中断，可以从 checkpoint 恢复：
+
+```bash
+torchpack dist-run -np 1 python tools/train.py \
+  configs/robot_bev/seg/robotbev_camera_lidar_lss.yaml \
+  --run-dir work_dirs/robot_bev/replica_18x600 \
+  dataset_root=/mnt/datasets/replica_robot_bev_v3/ \
+  resume_from=work_dirs/robot_bev/replica_18x600/latest.pth
+```
+
+### 当前训练配置说明
+
+当前配置假设：
+
+```text
+BEV 范围: x [0, 3], y [-1.5, 1.5]
+BEV 分辨率: 0.02 m
+BEV label shape: [6, 150, 150]
+类别: floor, carpet, obstacle, wall, furniture, other
+输入: camera + lidar
+sweeps: 当前帧 + 最多 5 个历史点云
+监督: observed_mask * class_validity * optional_per_class_supervision_mask
+```
+
+当前配置默认从官方 BEVFusion segmentation checkpoint 初始化：
+
+```text
+load_from: checkpoint/bevfusion-seg.pth
+load_from_ignore_shape_mismatch: true
+load_from_skip_prefixes:
+  - heads.map.classifier.6
+```
+
+训练脚本会选择性加载 checkpoint：shape 完全一致的参数会加载；shape 不一致的
+参数会跳过；`heads.map.classifier.6` 是最终 6 类分类层，虽然 shape 和
+RobotBEV 同为 6 通道，但 nuScenes 地图类别语义和 RobotBEV 类别语义不同，
+所以显式跳过并重新随机初始化。
+
+`SwinTransformer` 的 `init_cfg` 仍然设为 `null`，避免再额外加载
+`pretrained/swin_tiny_patch4_window7_224.pth`。当前初始化来源以
+`checkpoint/bevfusion-seg.pth` 为准。
+
+更详细的训练配置说明见：
+
+```text
+configs/robot_bev/README_zh.md
 ```

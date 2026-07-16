@@ -159,5 +159,9 @@ The source adapter normalizes Replica category names, maps known categories to
 the six fixed schema classes, omits explicitly ignored non-supervision
 categories, and maps remaining nonignored categories to `other`. The complete
 mapping groups and ignored set are included in the generation fingerprint.
-Rendering is fatal if the semantic scene yields zero instance mappings, the
-front semantic observation is empty, or an instance ID cannot fit `uint16`.
+Habitat-Sim 0.2.2 must load the semantic PLY with y-up/-z-forward orientation;
+the adapter overrides the z-up PTex stage defaults for the semantic asset so
+that RGB, depth, and instance IDs remain registered. Rendering is fatal if the
+semantic scene yields zero instance mappings, the front semantic observation
+is empty, semantic coverage over valid depth is below the configured threshold,
+or an instance ID cannot fit `uint16`.

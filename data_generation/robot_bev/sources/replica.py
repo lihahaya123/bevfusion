@@ -70,6 +70,12 @@ FRL_PTEX_ASSET_TYPE = 3
 REQUIRED_HABITAT_VERSION = "0.2.2"
 RESUME_POSE_ATOL = 1e-5
 SIMULATION_TIMESTEP_SECONDS = 1.0 / 60.0
+# Replica's semantic PLY loader already uses Habitat's canonical y-up,
+# -z-forward asset convention.  In Habitat-Sim 0.2.2, allowing the z-up PTex
+# stage defaults to propagate to the semantic asset rotates the semantic scene
+# graph a second time and produces spatially incorrect or empty observations.
+REPLICA_SEMANTIC_ORIENT_UP = (0.0, 1.0, 0.0)
+REPLICA_SEMANTIC_ORIENT_FRONT = (0.0, 0.0, -1.0)
 
 
 @dataclass(frozen=True)
@@ -205,6 +211,41 @@ def validate_replica_scene(
         ptex_parameters=expected["PTex parameters"],
         ptex_atlases=atlases,
     )
+
+
+def configure_replica_semantic_orientation(
+    cfg, stage_config: Path
+) -> None:
+    """Override the Habitat 0.2.2 semantic asset orientation for Replica."""
+    hs = habitat_common.require_habitat_sim()
+    if habitat_common.mn is None:
+        raise RuntimeError("Magnum is required to configure Replica semantics")
+
+    mediator = hs.metadata.MetadataMediator(cfg.sim_cfg)
+    cfg.metadata_mediator = mediator
+    manager = mediator.stage_template_manager
+    stage_handle = str(Path(stage_config).expanduser().resolve())
+    template = manager.get_template_by_handle(stage_handle)
+    if template is None:
+        raise RuntimeError(
+            f"Habitat did not register the Replica stage template: {stage_handle}"
+        )
+
+    template.semantic_orient_up = habitat_common.mn.Vector3(
+        REPLICA_SEMANTIC_ORIENT_UP
+    )
+    template.semantic_orient_front = habitat_common.mn.Vector3(
+        REPLICA_SEMANTIC_ORIENT_FRONT
+    )
+    template_id = manager.register_template(
+        template,
+        stage_handle,
+        force_registration=True,
+    )
+    if template_id < 0:
+        raise RuntimeError(
+            f"Failed to register corrected Replica stage template: {stage_handle}"
+        )
 
 
 def load_scene_splits(
@@ -521,6 +562,10 @@ def generation_parameters(args: argparse.Namespace) -> Dict[str, object]:
             "ignored_semantic_categories": sorted(
                 IGNORED_SEMANTIC_CATEGORIES
             ),
+            "semantic_orient_up": list(REPLICA_SEMANTIC_ORIENT_UP),
+            "semantic_orient_front": list(
+                REPLICA_SEMANTIC_ORIENT_FRONT
+            ),
         }
     )
     return parameters
@@ -582,6 +627,8 @@ def _validate_args(args: argparse.Namespace) -> None:
         raise ValueError("--depth-stride must be positive")
     if args.max_points <= 0:
         raise ValueError("--max-points must be positive")
+    if not 0.0 <= args.min_semantic_coverage <= 1.0:
+        raise ValueError("--min-semantic-coverage must be between 0 and 1")
     if min(args.width, args.height) <= 0:
         raise ValueError("Sensor resolution must be positive")
     if not 0.0 < args.hfov < 180.0:
@@ -820,6 +867,7 @@ def generate_scene(
     )
 
     cfg = make_cfg(args)
+    configure_replica_semantic_orientation(cfg, scene_files.stage_config)
     with hs.Simulator(cfg) as sim:
         stage_template = sim.get_stage_initialization_template()
         if stage_template is None:
@@ -894,8 +942,17 @@ def generate_scene(
                 raise RuntimeError(
                     "Front semantic observation is empty or exceeds uint16 range"
                 )
-            depth_mm = np.zeros(depth.shape, dtype=np.uint16)
             depth_valid = np.isfinite(depth) & (depth > 0.0)
+            semantic_coverage = float(
+                np.mean(semantic_obs[depth_valid] != 0)
+            )
+            if semantic_coverage < args.min_semantic_coverage:
+                raise RuntimeError(
+                    "Front semantic coverage is below the Replica quality "
+                    f"threshold: coverage={semantic_coverage:.6f} "
+                    f"threshold={args.min_semantic_coverage:.6f}"
+                )
+            depth_mm = np.zeros(depth.shape, dtype=np.uint16)
             depth_mm[depth_valid] = np.clip(
                 depth[depth_valid] * 1000.0, 0.0, 65535.0
             ).astype(np.uint16)
@@ -959,6 +1016,7 @@ def generate_scene(
                 f"[{frame_idx + 1:06d}/{args.num_frames:06d}] "
                 f"points={points.shape[0]} "
                 f"valid={float(np.mean(valid_mask)):.3f} "
+                f"semantic={semantic_coverage:.3f} "
                 f"mask={tuple(mask.shape)}"
             )
 
@@ -1030,7 +1088,7 @@ def run_generation(args: argparse.Namespace) -> None:
         source_type="simulation",
         source_dataset="replica_v1",
         generator_name="habitat_replica_robot_bev",
-        generator_version="3",
+        generator_version="4",
         splits=split_lists,
         generation_parameters=generation_parameters(args),
         resume=args.resume,
@@ -1160,6 +1218,7 @@ def make_parser() -> argparse.ArgumentParser:
     parser.add_argument("--max-depth", type=float, default=4.0)
     parser.add_argument("--depth-stride", type=int, default=4)
     parser.add_argument("--max-points", type=int, default=20000)
+    parser.add_argument("--min-semantic-coverage", type=float, default=0.95)
     unsupported_visualization_help = (
         "DEPRECATED AND UNSUPPORTED: the canonical writer does not emit "
         "legacy visualization artifacts; this option is rejected"

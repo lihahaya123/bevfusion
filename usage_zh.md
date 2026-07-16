@@ -56,7 +56,7 @@ export PYTHONPATH="$PWD:${PYTHONPATH:-}"
 
 ```bash
 export REPLICA_CONFIG=/mnt/u/ubuntu/workspace/dataset/HIKVISION/replica/replica.scene_dataset_config.json
-export OUTPUT_ROOT=/home/lihahaya/workspace/hikvision/bevfusion/data/replica_robot_bev_v3
+export OUTPUT_ROOT=/home/lihahaya/workspace/hikvision/bevfusion/data/replica_robot_bev_v3_repair
 ```
 
 `REPLICA_CONFIG` 必须指向原始 Replica v1 PTex 的
@@ -128,19 +128,19 @@ python -m data_generation.robot_bev.cli.validate_dataset \
   --root "$OUTPUT_ROOT" \
   --split train \
   --geometry-scene office_0 \
-  --geometry-frame 0
+  --geometry-frame 5
 
 python -m data_generation.robot_bev.cli.validate_dataset \
   --root "$OUTPUT_ROOT" \
   --split val \
   --geometry-scene office_1 \
-  --geometry-frame 0
+  --geometry-frame 5
 
 python -m data_generation.robot_bev.cli.validate_dataset \
   --root "$OUTPUT_ROOT" \
   --split test \
   --geometry-scene office_4 \
-  --geometry-frame 0
+  --geometry-frame 5
 ```
 
 诊断图会写入：

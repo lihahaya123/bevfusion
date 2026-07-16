@@ -10,6 +10,9 @@ import pytest
 from data_generation.robot_bev.sources import habitat_common
 from data_generation.robot_bev.sources.replica import (
     MAP_CLASSES,
+    REPLICA_SEMANTIC_ORIENT_FRONT,
+    REPLICA_SEMANTIC_ORIENT_UP,
+    configure_replica_semantic_orientation,
     generation_parameters,
     make_parser,
     run_generation,
@@ -184,6 +187,8 @@ def test_generation_parameters_capture_artifact_contract(
     assert parameters["width"] == 640
     assert parameters["xbound"] == [0.0, 3.0, 0.02]
     assert parameters["semantic_sensor"] is True
+    assert parameters["semantic_orient_up"] == [0.0, 1.0, 0.0]
+    assert parameters["semantic_orient_front"] == [0.0, 0.0, -1.0]
     assert "table" in parameters["semantic_category_groups"]["furniture"]
     assert "unknown" in parameters["ignored_semantic_categories"]
     for excluded in (
@@ -195,6 +200,54 @@ def test_generation_parameters_capture_artifact_contract(
         "save_ply",
     ):
         assert excluded not in parameters
+
+
+def test_replica_semantic_orientation_overrides_stage_defaults(
+    tmp_path, monkeypatch
+):
+    stage_path = (tmp_path / "replica_stage.stage_config.json").resolve()
+    template = SimpleNamespace(
+        semantic_orient_up=None,
+        semantic_orient_front=None,
+    )
+
+    class FakeStageManager:
+        def __init__(self):
+            self.registration = None
+
+        def get_template_by_handle(self, handle):
+            assert handle == str(stage_path)
+            return template
+
+        def register_template(
+            self, value, handle, force_registration=False
+        ):
+            self.registration = (value, handle, force_registration)
+            return 3
+
+    manager = FakeStageManager()
+    mediator = SimpleNamespace(stage_template_manager=manager)
+    fake_habitat = SimpleNamespace(
+        metadata=SimpleNamespace(
+            MetadataMediator=lambda unused_config: mediator
+        )
+    )
+    monkeypatch.setattr(
+        habitat_common, "require_habitat_sim", lambda: fake_habitat
+    )
+    monkeypatch.setattr(
+        habitat_common,
+        "mn",
+        SimpleNamespace(Vector3=lambda values: tuple(values)),
+    )
+    cfg = SimpleNamespace(sim_cfg=object(), metadata_mediator=None)
+
+    configure_replica_semantic_orientation(cfg, stage_path)
+
+    assert cfg.metadata_mediator is mediator
+    assert template.semantic_orient_up == REPLICA_SEMANTIC_ORIENT_UP
+    assert template.semantic_orient_front == REPLICA_SEMANTIC_ORIENT_FRONT
+    assert manager.registration == (template, str(stage_path), True)
 
 
 def test_run_generation_uses_one_root_writer_for_all_scenes(

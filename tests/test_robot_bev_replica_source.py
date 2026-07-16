@@ -250,6 +250,47 @@ def test_replica_semantic_orientation_overrides_stage_defaults(
     assert manager.registration == (template, str(stage_path), True)
 
 
+def test_far_depth_rays_still_cover_canonical_bev():
+    depth = np.array([[6.0]], dtype=np.float32)
+    intrinsic = np.eye(3, dtype=np.float32)
+    t_base_camera_habitat = np.array(
+        [
+            [0.0, 0.0, -1.0, 0.0],
+            [-1.0, 0.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0, 0.0],
+            [0.0, 0.0, 0.0, 1.0],
+        ],
+        dtype=np.float32,
+    )
+
+    points, _ = habitat_common.depth_to_points(
+        depth,
+        intrinsic,
+        t_base_camera_habitat,
+        max_depth=4.0,
+        stride=1,
+        max_points=10,
+    )
+    observation_points, _ = habitat_common.depth_to_points(
+        depth,
+        intrinsic,
+        t_base_camera_habitat,
+        max_depth=float("inf"),
+        stride=1,
+        max_points=10,
+    )
+
+    assert points.shape == (0, 5)
+    np.testing.assert_allclose(observation_points[0, :3], [6.0, 0.0, 0.0])
+
+    valid_mask = habitat_common.make_observation_mask(
+        [(observation_points, None, np.zeros(3, dtype=np.float32))],
+        (0.0, 3.0, 0.02),
+        (-1.5, 1.5, 0.02),
+    )
+    assert valid_mask[:, 75].all()
+
+
 def test_run_generation_uses_one_root_writer_for_all_scenes(
     tmp_path, monkeypatch
 ):

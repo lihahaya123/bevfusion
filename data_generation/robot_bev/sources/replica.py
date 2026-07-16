@@ -978,7 +978,25 @@ def generate_scene(
                     t_base_camera_habitat[:3, 3],
                 )
             ]
-            valid_mask = make_observation_mask(views, xbound, ybound)
+            observation_points, _ = depth_to_points(
+                depth,
+                intrinsic,
+                t_base_camera_habitat,
+                float("inf"),
+                args.depth_stride,
+                args.max_points,
+            )
+            valid_mask = make_observation_mask(
+                [
+                    (
+                        observation_points,
+                        None,
+                        t_base_camera_habitat[:3, 3],
+                    )
+                ],
+                xbound,
+                ybound,
+            )
             mask = make_bev_labels(
                 sim,
                 state,

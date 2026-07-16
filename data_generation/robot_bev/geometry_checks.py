@@ -2,7 +2,7 @@
 
 import pickle
 from pathlib import Path
-from typing import Mapping, Optional, Sequence, Tuple
+from typing import Iterable, Mapping, Optional, Sequence, Tuple
 
 import numpy as np
 from PIL import Image, ImageDraw
@@ -87,7 +87,7 @@ def write_geometry_diagnostics(
     scene_id: str,
     frame_id: int,
     history_count: int = 5,
-) -> Tuple[Path, Path, Path]:
+) -> Tuple[Path, Path, Path, Path]:
     """Write camera, BEV, and aligned-sweep diagnostics for one frame."""
     if history_count < 0:
         raise ValueError("history_count must be non-negative")
@@ -115,12 +115,14 @@ def write_geometry_diagnostics(
     rgb_path = output_dir / f"{stem}_rgb_point_overlay.png"
     bev_path = output_dir / f"{stem}_bev_overlay.png"
     sweeps_path = output_dir / f"{stem}_aligned_sweeps.png"
+    overview_path = output_dir / f"{stem}_overview.png"
 
     _write_rgb_overlay(root, current, points_lidar, rgb_path)
     _write_bev_overlay(root, current, points_lidar, bev_path)
     history = infos[max(0, current_index - history_count) : current_index]
     _write_sweep_overlay(root, current, points_lidar, history, sweeps_path)
-    return rgb_path, bev_path, sweeps_path
+    _write_overview(root, current, points_lidar, overview_path)
+    return rgb_path, bev_path, sweeps_path, overview_path
 
 
 def _load_scene_infos(
@@ -186,20 +188,19 @@ def _write_bev_overlay(
     points_lidar: np.ndarray,
     output_path: Path,
 ) -> None:
+    _render_bev_overlay(root, info, points_lidar).save(output_path, format="PNG")
+
+
+def _render_bev_overlay(
+    root: Path,
+    info: Mapping[str, object],
+    points_lidar: np.ndarray,
+) -> Image.Image:
     labels = np.load(root / str(info["bev_mask_path"]), allow_pickle=False)
     observed = np.load(
         root / str(info["bev_observed_mask_path"]), allow_pickle=False
     )
-    cells = np.full(BEV_SHAPE[1:] + (3,), (16, 16, 20), dtype=np.uint8)
-    cells[observed.astype(bool)] = (48, 48, 54)
-    for class_index, color in enumerate(_CLASS_COLORS):
-        mask = labels[class_index].astype(bool)
-        cells[mask] = (
-            (cells[mask].astype(np.uint16) + np.asarray(color, dtype=np.uint16))
-            // 2
-        ).astype(np.uint8)
-
-    image = _bev_image(cells)
+    image = _bev_image(_bev_label_cells(labels, observed, blended=True))
     draw = ImageDraw.Draw(image)
     points_base = _transform_points(points_lidar, np.asarray(info["lidar2base"]))
     _draw_bev_points(draw, points_base, _BEV_POINT_COLOR)
@@ -208,7 +209,163 @@ def _write_bev_overlay(
     _draw_camera_frustum(draw, info, camera_image_size)
     _draw_axes(draw, image.size)
     _draw_class_legend(draw)
-    image.save(output_path, format="PNG")
+    return image
+
+
+def _write_overview(
+    root: Path,
+    info: Mapping[str, object],
+    points_lidar: np.ndarray,
+    output_path: Path,
+) -> None:
+    """Write a six-panel quick-look comparison for one canonical frame."""
+    with Image.open(root / str(info["image_path"])) as source:
+        rgb = source.convert("RGB")
+    labels = np.load(root / str(info["bev_mask_path"]), allow_pickle=False)
+    observed = np.load(
+        root / str(info["bev_observed_mask_path"]), allow_pickle=False
+    )
+    panels = (
+        ("RGB", rgb),
+        ("Depth", _load_optional_depth(root, info, rgb.size)),
+        ("Semantic", _load_optional_semantic(root, info, rgb.size)),
+        ("BEV labels", _bev_image(_bev_label_cells(labels, observed, blended=False))),
+        ("Observed mask", _bev_image(_observed_cells(observed))),
+        ("BEV + points", _render_bev_overlay(root, info, points_lidar)),
+    )
+    _compose_overview(panels, output_path)
+
+
+def _load_optional_depth(
+    root: Path,
+    info: Mapping[str, object],
+    fallback_size: Tuple[int, int],
+) -> Image.Image:
+    depth_path = info.get("depth_path")
+    if not depth_path:
+        return _placeholder(fallback_size, "no depth")
+    with Image.open(root / str(depth_path)) as source:
+        depth = np.asarray(source)
+    return Image.fromarray(_colorize_depth(depth), mode="RGB")
+
+
+def _load_optional_semantic(
+    root: Path,
+    info: Mapping[str, object],
+    fallback_size: Tuple[int, int],
+) -> Image.Image:
+    semantic_path = info.get("semantic_path")
+    if not semantic_path:
+        return _placeholder(fallback_size, "no semantic")
+    with Image.open(root / str(semantic_path)) as source:
+        semantic = np.asarray(source)
+    return Image.fromarray(_colorize_semantic(semantic), mode="RGB")
+
+
+def _placeholder(size: Tuple[int, int], text: str) -> Image.Image:
+    image = Image.new("RGB", size, (24, 24, 28))
+    draw = ImageDraw.Draw(image)
+    draw.text((10, 10), text, fill=(220, 220, 220))
+    return image
+
+
+def _colorize_depth(depth: np.ndarray) -> np.ndarray:
+    values = np.asarray(depth, dtype=np.float32)
+    valid = values > 0
+    colored = np.zeros(values.shape + (3,), dtype=np.uint8)
+    if not np.any(valid):
+        return colored
+    lo = float(np.percentile(values[valid], 2))
+    hi = float(np.percentile(values[valid], 98))
+    if hi <= lo:
+        hi = lo + 1.0
+    normalized = np.clip((values - lo) / (hi - lo), 0.0, 1.0)
+    colored[..., 0] = (255.0 * normalized).astype(np.uint8)
+    colored[..., 1] = (255.0 * (1.0 - np.abs(normalized - 0.5) * 2.0)).astype(
+        np.uint8
+    )
+    colored[..., 2] = (255.0 * (1.0 - normalized)).astype(np.uint8)
+    colored[~valid] = (0, 0, 0)
+    return colored
+
+
+def _colorize_semantic(semantic: np.ndarray) -> np.ndarray:
+    values = np.asarray(semantic, dtype=np.uint32)
+    colored = np.zeros(values.shape + (3,), dtype=np.uint8)
+    nonzero = values != 0
+    colored[..., 0] = ((values * 37 + 23) % 255).astype(np.uint8)
+    colored[..., 1] = ((values * 67 + 71) % 255).astype(np.uint8)
+    colored[..., 2] = ((values * 97 + 149) % 255).astype(np.uint8)
+    colored[~nonzero] = (0, 0, 0)
+    return colored
+
+
+def _bev_label_cells(
+    labels: np.ndarray,
+    observed: np.ndarray,
+    blended: bool,
+) -> np.ndarray:
+    cells = np.full(BEV_SHAPE[1:] + (3,), (16, 16, 20), dtype=np.uint8)
+    cells[observed.astype(bool)] = (48, 48, 54)
+    for class_index, color in enumerate(_CLASS_COLORS):
+        mask = labels[class_index].astype(bool)
+        if blended:
+            cells[mask] = (
+                (
+                    cells[mask].astype(np.uint16)
+                    + np.asarray(color, dtype=np.uint16)
+                )
+                // 2
+            ).astype(np.uint8)
+        else:
+            cells[mask] = color
+    return cells
+
+
+def _observed_cells(observed: np.ndarray) -> np.ndarray:
+    cells = np.zeros(BEV_SHAPE[1:] + (3,), dtype=np.uint8)
+    cells[observed.astype(bool)] = (230, 230, 230)
+    return cells
+
+
+def _compose_overview(
+    panels: Iterable[Tuple[str, Image.Image]],
+    output_path: Path,
+) -> None:
+    panel_width, panel_height = 320, 240
+    title_height = 22
+    columns = 3
+    rows = 2
+    canvas = Image.new(
+        "RGB",
+        (columns * panel_width, rows * (panel_height + title_height)),
+        (10, 10, 12),
+    )
+    draw = ImageDraw.Draw(canvas)
+    for index, (title, image) in enumerate(panels):
+        row = index // columns
+        col = index % columns
+        x = col * panel_width
+        y = row * (panel_height + title_height)
+        draw.rectangle(
+            (x, y, x + panel_width, y + title_height), fill=(32, 32, 36)
+        )
+        draw.text((x + 8, y + 5), title, fill=(235, 235, 235))
+        resized = _fit_panel(image, (panel_width, panel_height))
+        canvas.paste(resized, (x, y + title_height))
+    canvas.save(output_path, format="PNG")
+
+
+def _fit_panel(image: Image.Image, size: Tuple[int, int]) -> Image.Image:
+    target_width, target_height = size
+    source = image.convert("RGB")
+    scale = min(target_width / source.width, target_height / source.height)
+    width = max(1, int(round(source.width * scale)))
+    height = max(1, int(round(source.height * scale)))
+    resized = source.resize((width, height), resample=Image.NEAREST)
+    panel = Image.new("RGB", size, (0, 0, 0))
+    panel.paste(resized, ((target_width - width) // 2, (target_height - height) // 2))
+    return panel
 
 
 def _write_sweep_overlay(

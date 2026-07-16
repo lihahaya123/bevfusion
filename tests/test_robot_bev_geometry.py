@@ -72,7 +72,7 @@ def _payload(frame_id: int) -> FramePayload:
     )
 
 
-def test_write_geometry_diagnostics_writes_three_rgb_pngs(tmp_path):
+def test_write_geometry_diagnostics_writes_rgb_pngs(tmp_path):
     writer = RobotBEVWriter(
         root=tmp_path,
         dataset_id="fixture_v3",
@@ -96,6 +96,7 @@ def test_write_geometry_diagnostics_writes_three_rgb_pngs(tmp_path):
     assert {path.name for path in paths} == {
         "000001_aligned_sweeps.png",
         "000001_bev_overlay.png",
+        "000001_overview.png",
         "000001_rgb_point_overlay.png",
     }
     assert set(diagnostics.iterdir()) == set(paths)

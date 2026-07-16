@@ -146,6 +146,7 @@ def test_validation_cli_prints_json_report_and_geometry_paths(tmp_path):
         "000000_rgb_point_overlay.png",
         "000000_bev_overlay.png",
         "000000_aligned_sweeps.png",
+        "000000_overview.png",
     ]
     assert all(Path(path).is_file() for path in report["geometry_diagnostics"])
 

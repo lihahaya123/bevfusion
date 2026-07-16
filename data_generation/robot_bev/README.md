@@ -31,6 +31,7 @@ its root-relative `robot_infos_<split>.pkl` files are the source of truth.
 
 ## Start here
 
+- [Usage guide for rendering and conversion](docs/usage_zh.md)
 - [Schema and coordinates](docs/schema_v3.md)
 - [Replica generation runbook](docs/habitat_replica.md)
 - [Adding a source adapter](docs/add_new_source.md)

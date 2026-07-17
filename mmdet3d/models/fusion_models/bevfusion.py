@@ -171,14 +171,21 @@ class BEVFusion(Base3DFusionModel):
     def voxelize(self, points, sensor):
         feats, coords, sizes = [], [], []
         for k, res in enumerate(points):
-            ret = self.encoders[sensor]["voxelize"](res)
-            if len(ret) == 3:
-                # hard voxelize
-                f, c, n = ret
+            if res.shape[0] == 0:
+                voxelizer = self.encoders[sensor]["voxelize"]
+                max_num_points = getattr(voxelizer, "max_num_points", 1)
+                f = res.new_zeros((1, max_num_points, res.shape[1]))
+                c = torch.zeros((1, 3), device=res.device, dtype=torch.int)
+                n = torch.ones((1,), device=res.device, dtype=torch.int)
             else:
-                assert len(ret) == 2
-                f, c = ret
-                n = None
+                ret = self.encoders[sensor]["voxelize"](res)
+                if len(ret) == 3:
+                    # hard voxelize
+                    f, c, n = ret
+                else:
+                    assert len(ret) == 2
+                    f, c = ret
+                    n = None
             feats.append(f)
             coords.append(F.pad(c, (1, 0), mode="constant", value=k))
             if n is not None:

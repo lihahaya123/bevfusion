@@ -145,3 +145,4 @@ results/
 # Codex isolated worktrees
 .worktrees/
 checkpoint/
+run_bash/

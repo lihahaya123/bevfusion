@@ -1,6 +1,12 @@
 import argparse
 import copy
 import os
+import sys
+from pathlib import Path
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
 
 import mmcv
 import numpy as np
@@ -91,7 +97,8 @@ def main() -> None:
                 outputs = model(**data)
 
         if args.mode == "gt" and "gt_bboxes_3d" in data:
-            bboxes = data["gt_bboxes_3d"].data[0][0].tensor.numpy()
+            gt_boxes = data["gt_bboxes_3d"].data[0][0]
+            bboxes = gt_boxes.tensor.numpy()
             labels = data["gt_labels_3d"].data[0][0].numpy()
 
             if args.bbox_classes is not None:
@@ -99,8 +106,11 @@ def main() -> None:
                 bboxes = bboxes[indices]
                 labels = labels[indices]
 
-            bboxes[..., 2] -= bboxes[..., 5] / 2
-            bboxes = LiDARInstance3DBoxes(bboxes, box_dim=9)
+            if len(bboxes) > 0:
+                bboxes[..., 2] -= bboxes[..., 5] / 2
+                bboxes = LiDARInstance3DBoxes(bboxes, box_dim=bboxes.shape[-1])
+            else:
+                bboxes = None
         elif args.mode == "pred" and "boxes_3d" in outputs[0]:
             bboxes = outputs[0]["boxes_3d"].tensor.numpy()
             scores = outputs[0]["scores_3d"].numpy()
@@ -126,6 +136,8 @@ def main() -> None:
 
         if args.mode == "gt" and "gt_masks_bev" in data:
             masks = data["gt_masks_bev"].data[0].numpy()
+            if masks.ndim == 4:
+                masks = masks[0]
             masks = masks.astype(np.bool)
         elif args.mode == "pred" and "masks_bev" in outputs[0]:
             masks = outputs[0]["masks_bev"].numpy()

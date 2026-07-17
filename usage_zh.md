@@ -380,24 +380,7 @@ docker run -it \
   /bin/bash
 ```
 
-### 训练前冒烟检查
 
-进入训练 Docker 后先执行：
-
-```bash
-cd /path/to/bevfusion
-export PYTHONPATH="$PWD:${PYTHONPATH:-}"
-
-python tools/check_robot_bev_training.py \
-  configs/robot_bev/seg/robotbev_camera_lidar_lss.yaml
-```
-
-无 CUDA 环境会只检查 dataset、dataloader 和 model 构建；有 CUDA 环境会额外跑
-一个 batch 的 forward/backward。检查通过时应看到：
-
-```text
-[forward] one-batch forward/backward passed
-```
 
 如果是在宿主机直接启动 Docker，必须加 `--gpus all`，否则容器看不到 GPU：
 
@@ -410,21 +393,6 @@ docker run --rm --gpus all \
     configs/robot_bev/seg/robotbev_camera_lidar_lss.yaml
 ```
 
-只想检查数据和模型构建、不跑前后向时：
-
-```bash
-python tools/check_robot_bev_training.py \
-  configs/robot_bev/seg/robotbev_camera_lidar_lss.yaml \
-  --skip-forward
-```
-
-远端正式数据冒烟检查：
-
-```bash
-python tools/check_robot_bev_training.py \
-  configs/robot_bev/seg/robotbev_camera_lidar_lss.yaml \
-  dataset_root=/mnt/datasets/replica_robot_bev_v3/
-```
 
 ### 启动训练
 
@@ -479,6 +447,15 @@ torchpack dist-run -np 1 python tools/train.py \
   dataset_root=/mnt/datasets/replica_robot_bev_v3/ \
   resume_from=work_dirs/robot_bev/replica_18x600/latest.pth
 ```
+
+### 测试
+torchpack dist-run -np 1 python tools/test.py \
+  configs/robot_bev/seg/robotbev_camera_lidar_lss.yaml \
+  /data/replica_18x600/latest.pth \
+  --eval map \
+  --map-score 0.5 \
+  --show-dir /data/replica_18x600/results/show \
+  dataset_root=/data/
 
 ### 当前训练配置说明
 

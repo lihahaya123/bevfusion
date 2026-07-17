@@ -1,9 +1,16 @@
 import argparse
 import copy
 import os
+import sys
 import warnings
+from pathlib import Path
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
 
 import mmcv
+import numpy as np
 import torch
 from torchpack.utils.config import configs
 from torchpack import distributed as dist
@@ -16,7 +23,56 @@ from mmdet3d.datasets import build_dataloader, build_dataset
 from mmdet3d.models import build_model
 from mmdet.apis import multi_gpu_test, set_random_seed
 from mmdet.datasets import replace_ImageToTensor
+from mmdet3d.core.utils import visualize_map
 from mmdet3d.utils import recursive_eval
+
+
+def is_robotbev_dataset(dataset) -> bool:
+    if dataset.__class__.__name__ == "RobotBEVDataset":
+        return True
+    inner = getattr(dataset, "dataset", None)
+    return inner is not None and is_robotbev_dataset(inner)
+
+
+def unwrap_dataset(dataset):
+    while hasattr(dataset, "dataset"):
+        dataset = dataset.dataset
+    return dataset
+
+
+def save_robotbev_visualizations(dataset, outputs, out_dir, map_score=0.5) -> None:
+    dataset = unwrap_dataset(dataset)
+    mmcv.mkdir_or_exist(out_dir)
+    map_classes = getattr(dataset, "map_classes", None) or []
+
+    for index, result in enumerate(outputs):
+        token = dataset.data_infos[index].get("token", f"{index:06d}")
+        pred = result.get("masks_bev")
+        gt = result.get("gt_masks_bev")
+        if pred is not None:
+            pred_mask = pred.numpy() >= map_score
+            visualize_map(
+                os.path.join(out_dir, "map_pred", f"{token}.png"),
+                pred_mask.astype(np.bool),
+                classes=map_classes,
+            )
+        if gt is not None:
+            gt_mask = gt.numpy().astype(np.bool)
+            visualize_map(
+                os.path.join(out_dir, "map_gt", f"{token}.png"),
+                gt_mask,
+                classes=map_classes,
+            )
+        if pred is not None and gt is not None:
+            pred_any = (pred.numpy() >= map_score).any(axis=0)
+            gt_any = gt.numpy().astype(bool).any(axis=0)
+            overlay = np.zeros((*pred_any.shape, 3), dtype=np.uint8)
+            overlay[gt_any] = (0, 180, 0)
+            overlay[pred_any] = (220, 0, 0)
+            overlay[pred_any & gt_any] = (240, 220, 0)
+            fpath = os.path.join(out_dir, "map_overlay", f"{token}.png")
+            mmcv.mkdir_or_exist(os.path.dirname(fpath))
+            mmcv.imwrite(overlay[:, :, ::-1], fpath)
 
 
 def parse_args():
@@ -46,6 +102,12 @@ def parse_args():
     )
     parser.add_argument("--show", action="store_true", help="show results")
     parser.add_argument("--show-dir", help="directory where results will be saved")
+    parser.add_argument(
+        "--map-score",
+        type=float,
+        default=0.5,
+        help="score threshold for saving RobotBEV map predictions with --show-dir",
+    )
     parser.add_argument(
         "--gpu-collect",
         action="store_true",
@@ -95,7 +157,8 @@ def parse_args():
         help="job launcher",
     )
     parser.add_argument("--local_rank", type=int, default=0)
-    args = parser.parse_args()
+    args, opts = parser.parse_known_args()
+    args.cfg_opts = opts
     if "LOCAL_RANK" not in os.environ:
         os.environ["LOCAL_RANK"] = str(args.local_rank)
 
@@ -117,11 +180,8 @@ def main():
     torch.backends.cudnn.benchmark = True
     torch.cuda.set_device(dist.local_rank())
 
-    assert args.out or args.eval or args.format_only or args.show or args.show_dir, (
-        "Please specify at least one operation (save/eval/format/show the "
-        'results / save the results) with the argument "--out", "--eval"'
-        ', "--format-only", "--show" or "--show-dir"'
-    )
+    if not (args.out or args.eval or args.format_only or args.show or args.show_dir):
+        args.eval = ["map"]
 
     if args.eval and args.format_only:
         raise ValueError("--eval and --format_only cannot be both specified")
@@ -130,6 +190,7 @@ def main():
         raise ValueError("The output file must be a pkl file.")
 
     configs.load(args.config, recursive=True)
+    configs.update(args.cfg_opts)
     cfg = Config(recursive_eval(configs), filename=args.config)
     print(cfg)
 
@@ -207,6 +268,11 @@ def main():
         if args.out:
             print(f"\nwriting results to {args.out}")
             mmcv.dump(outputs, args.out)
+        if args.show_dir and is_robotbev_dataset(dataset):
+            print(f"\nwriting RobotBEV visualizations to {args.show_dir}")
+            save_robotbev_visualizations(
+                dataset, outputs, args.show_dir, map_score=args.map_score
+            )
         kwargs = {} if args.eval_options is None else args.eval_options
         if args.format_only:
             dataset.format_results(outputs, **kwargs)
@@ -222,7 +288,10 @@ def main():
                 "rule",
             ]:
                 eval_kwargs.pop(key, None)
-            eval_kwargs.update(dict(metric=args.eval, **kwargs))
+            if is_robotbev_dataset(dataset):
+                eval_kwargs.update(kwargs)
+            else:
+                eval_kwargs.update(dict(metric=args.eval, **kwargs))
             print(dataset.evaluate(outputs, **eval_kwargs))
 
 

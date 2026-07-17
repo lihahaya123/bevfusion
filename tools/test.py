@@ -1,6 +1,7 @@
 import argparse
 import copy
 import os
+import re
 import sys
 import warnings
 from pathlib import Path
@@ -40,6 +41,12 @@ def unwrap_dataset(dataset):
     return dataset
 
 
+def safe_visualization_name(value) -> str:
+    name = str(value)
+    name = re.sub(r"[^0-9A-Za-z_.-]+", "_", name).strip("._")
+    return name or "unnamed"
+
+
 def save_robotbev_visualizations(dataset, outputs, out_dir, map_score=0.5) -> None:
     dataset = unwrap_dataset(dataset)
     mmcv.mkdir_or_exist(out_dir)
@@ -47,19 +54,20 @@ def save_robotbev_visualizations(dataset, outputs, out_dir, map_score=0.5) -> No
 
     for index, result in enumerate(outputs):
         token = dataset.data_infos[index].get("token", f"{index:06d}")
+        name = safe_visualization_name(token)
         pred = result.get("masks_bev")
         gt = result.get("gt_masks_bev")
         if pred is not None:
             pred_mask = pred.numpy() >= map_score
             visualize_map(
-                os.path.join(out_dir, "map_pred", f"{token}.png"),
-                pred_mask.astype(np.bool),
+                os.path.join(out_dir, "map_pred", f"{name}.png"),
+                pred_mask.astype(bool),
                 classes=map_classes,
             )
         if gt is not None:
-            gt_mask = gt.numpy().astype(np.bool)
+            gt_mask = gt.numpy().astype(bool)
             visualize_map(
-                os.path.join(out_dir, "map_gt", f"{token}.png"),
+                os.path.join(out_dir, "map_gt", f"{name}.png"),
                 gt_mask,
                 classes=map_classes,
             )
@@ -70,7 +78,7 @@ def save_robotbev_visualizations(dataset, outputs, out_dir, map_score=0.5) -> No
             overlay[gt_any] = (0, 180, 0)
             overlay[pred_any] = (220, 0, 0)
             overlay[pred_any & gt_any] = (240, 220, 0)
-            fpath = os.path.join(out_dir, "map_overlay", f"{token}.png")
+            fpath = os.path.join(out_dir, "map_overlay", f"{name}.png")
             mmcv.mkdir_or_exist(os.path.dirname(fpath))
             mmcv.imwrite(overlay[:, :, ::-1], fpath)
 

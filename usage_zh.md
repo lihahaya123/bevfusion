@@ -477,6 +477,75 @@ torchpack dist-run -np 1 python tools/test.py \
 测试验证集指标最好的模型时，将 checkpoint 路径替换为对应的
 `best_robotbev_map_iou_max_epoch_<N>.pth`。
 
+### 自采 mytest 数据只做推理
+
+`data/mytest/data` 目前包含：
+
+```text
+data/mytest/data/in.txt      # 相机内参，fx fy cx cy
+data/mytest/data/rgb/        # RGB 图像
+data/mytest/data/pclCam/     # 点云 txt
+```
+
+可以转换为 RobotBEV v3 推理格式：
+
+```bash
+python tools/prepare_mytest_robot_bev.py \
+  --src-root data/mytest/data \
+  --out-root data/mytest/robot_bev \
+  --overwrite
+```
+
+默认输出：
+
+```text
+data/mytest/robot_bev/
+  dataset_metadata.json
+  splits.json
+  robot_infos_test.pkl
+  bevfusion_infos_test.pkl
+  mytest/
+    images/
+    points/
+    bev_masks/               # 空占位 GT
+    bev_observed_masks/      # 空占位 observed mask
+```
+
+该转换默认是 inference-only：BEV GT 和 observed mask 都是空占位，
+`class_validity` 全为 0。因此可以用于模型预测和可视化，但不要用于真实
+`--eval map` 指标。
+
+推理并保存预测图：
+
+```bash
+torchpack dist-run -np 1 python tools/test.py \
+  configs/robot_bev/seg/robotbev_camera_lidar_lss.yaml \
+  /data/replica_18x600/latest.pth \
+  --map-score 0.5 \
+  --show-dir data/mytest/robot_bev//results/show \
+  dataset_root=data/mytest/robot_bev/
+```
+
+注意这里不要加 `--eval map`。由于没有真实 GT，`map_gt` 和 `map_overlay`
+只反映空占位标签，不代表真实指标。
+
+如果 `pclCam` 点云确实是相机坐标系，且相机坐标系与训练时 RobotBEV 使用的
+车体/机器人坐标系不一致，建议提供相机到机器人 base 的外参：
+
+```bash
+python tools/prepare_mytest_robot_bev.py \
+  --src-root data/mytest/data \
+  --out-root data/mytest/robot_bev \
+  --camera2base path/to/camera2base.txt \
+  --overwrite
+```
+
+`camera2base.txt` 支持 3x4 或 4x4 矩阵，采用列向量约定：
+
+```text
+p_base = R @ p_camera + t
+```
+
 ### 当前训练配置说明
 
 当前配置假设：

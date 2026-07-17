@@ -200,13 +200,17 @@ class RobotBEVDataset(Custom3DDataset):
             for threshold, iou in zip(thresholds, ious[index]):
                 metrics[f"map/{name}/iou@{threshold.item():.2f}"] = iou.item()
         if valid_classes.any():
-            metrics["map/mean/iou@0.50"] = ious[valid_classes, 3].mean().item()
-            metrics["map/mean/iou@max"] = (
-                ious[valid_classes].max(dim=1).values.mean().item()
-            )
+            mean_iou_50 = ious[valid_classes, 3].mean().item()
+            mean_iou_max = ious[valid_classes].max(dim=1).values.mean().item()
         else:
-            metrics["map/mean/iou@0.50"] = 0.0
-            metrics["map/mean/iou@max"] = 0.0
+            mean_iou_50 = 0.0
+            mean_iou_max = 0.0
+        metrics["map/mean/iou@0.50"] = mean_iou_50
+        metrics["map/mean/iou@max"] = mean_iou_max
+        # MMCV EvalHook uses the save_best metric name in checkpoint filenames.
+        # Keep slash-free aliases so best checkpoint paths are safe on disk.
+        metrics["robotbev_map_iou_50"] = mean_iou_50
+        metrics["robotbev_map_iou_max"] = mean_iou_max
         return metrics
 
     def evaluate(self, results, **kwargs):

@@ -347,6 +347,8 @@ data:
 
 evaluation:
   interval: 1
+  save_best: robotbev_map_iou_max
+  rule: greater
   pipeline: ${robot_test_pipeline}
 
 optimizer:

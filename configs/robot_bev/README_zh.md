@@ -105,6 +105,32 @@ torchpack dist-run -np 4 python tools/train.py \
   dataset_root=/mnt/datasets/replica_robot_bev_v3/
 ```
 
+## Checkpoint 保存逻辑
+
+当前配置：
+
+```yaml
+checkpoint_config:
+  interval: 1
+  max_keep_ckpts: 1
+
+evaluation:
+  interval: 1
+  save_best: robotbev_map_iou_max
+  rule: greater
+```
+
+训练过程中会保存：
+
+```text
+latest.pth                                  # 最新 checkpoint，通常是软链接
+epoch_<N>.pth                               # 第 N 个 epoch 的 checkpoint
+best_robotbev_map_iou_max_epoch_<N>.pth     # 验证集 robotbev_map_iou_max 最好的 checkpoint
+```
+
+其中 `robotbev_map_iou_max` 与日志里的 `map/mean/iou@max` 数值相同，是用于
+保存 best checkpoint 的文件名安全别名。
+
 ## 当前配置假设
 
 ```text

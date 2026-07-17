@@ -436,6 +436,18 @@ docker run --rm --gpus all \
     dataset_root=/mnt/datasets/replica_robot_bev_v3/
 ```
 
+训练过程中会保存：
+
+```text
+latest.pth                                  # 最新 checkpoint，通常是软链接
+epoch_<N>.pth                               # 第 N 个 epoch 的 checkpoint
+best_robotbev_map_iou_max_epoch_<N>.pth     # 验证集 robotbev_map_iou_max 最好的 checkpoint
+```
+
+当前配置每个 epoch 验证一次，并以 `robotbev_map_iou_max` 越大越好作为 best
+模型标准。`robotbev_map_iou_max` 与日志中的 `map/mean/iou@max` 数值相同，
+只是为了避免 `/` 出现在 checkpoint 文件名中，额外提供了一个文件名安全的指标别名。
+
 ### 恢复训练
 
 如果训练中断，可以从 checkpoint 恢复：
@@ -449,6 +461,10 @@ torchpack dist-run -np 1 python tools/train.py \
 ```
 
 ### 测试
+
+测试最新模型：
+
+```bash
 torchpack dist-run -np 1 python tools/test.py \
   configs/robot_bev/seg/robotbev_camera_lidar_lss.yaml \
   /data/replica_18x600/latest.pth \
@@ -456,6 +472,10 @@ torchpack dist-run -np 1 python tools/test.py \
   --map-score 0.5 \
   --show-dir /data/replica_18x600/results/show \
   dataset_root=/data/
+```
+
+测试验证集指标最好的模型时，将 checkpoint 路径替换为对应的
+`best_robotbev_map_iou_max_epoch_<N>.pth`。
 
 ### 当前训练配置说明
 

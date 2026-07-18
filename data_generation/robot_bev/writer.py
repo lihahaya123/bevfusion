@@ -41,6 +41,7 @@ class FramePayload:
     per_class_supervision_mask: Optional[np.ndarray] = None
     depth_mm: Optional[np.ndarray] = None
     semantics: Optional[np.ndarray] = None
+    extra_info: Optional[Mapping[str, object]] = None
 
 
 class RobotBEVWriter:
@@ -457,6 +458,15 @@ class RobotBEVWriter:
                 np.asarray(frame.observed_mask).sum(dtype=np.int64)
             ),
         }
+        if frame.extra_info is not None:
+            reserved = set(record)
+            for key, value in frame.extra_info.items():
+                if key in reserved:
+                    raise SchemaError(
+                        f"extra_info key {key!r} conflicts with a reserved "
+                        "RobotBEV manifest field"
+                    )
+                record[str(key)] = value
         return record
 
     def _append_manifest(
@@ -540,6 +550,15 @@ class RobotBEVWriter:
             "depth_path": record.get("depth_path"),
             "semantic_path": record.get("semantic_path"),
         }
+        for key in ("trajectory_step", "raw_frame_id"):
+            if key in record:
+                info[key] = int(record[key])
+        for key in (
+            "semantic_coverage",
+            "observed_coverage",
+        ):
+            if key in record:
+                info[key] = float(record[key])
         for key in (
             "bev_supervision_mask_path",
             "depth_path",

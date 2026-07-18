@@ -76,6 +76,9 @@ python -m data_generation.robot_bev.cli.generate_replica \
   --split-file data_generation/robot_bev/configs/replica_splits.example.json \
   --output-dir "$OUTPUT_ROOT" \
   --num-frames 10 \
+  --min-points 20 \
+  --min-observed-coverage 0.01 \
+  --max-quality-rejects 10000 \
   --gpu-id 0 \
   --disable-physics \
   --recompute-navmesh
@@ -259,10 +262,27 @@ python -m data_generation.robot_bev.cli.generate_replica \
   --split-file data_generation/robot_bev/configs/replica_splits.example.json \
   --output-dir "$PRODUCTION_ROOT" \
   --num-frames 600 \
+  --min-points 20 \
+  --min-observed-coverage 0.01 \
+  --max-quality-rejects 10000 \
   --gpu-id 0 \
   --disable-physics \
   --recompute-navmesh
 ```
+
+其中 `--min-points` 和 `--min-observed-coverage` 是训练质量门控：
+
+```text
+--min-points 20              # 当前帧点云少于 20 个点则跳过
+--min-observed-coverage 0.01 # BEV observed mask 覆盖率低于 1% 则跳过
+--max-quality-rejects 10000  # 单场景最多允许跳过的低质量轨迹步数
+```
+
+这些参数用于避免极端稀疏帧进入训练集。生成器会把不达标的轨迹步跳过，
+继续移动机器人并采样，直到写满 `--num-frames` 指定的有效帧数；如果跳过次数
+超过 `--max-quality-rejects`，才会停止并提示调整 seed、起点或阈值。否则在
+`batch_size=1` 时，LiDAR SparseEncoder 的 BN 可能遇到只有 1 个 sparse voxel
+的输入并中断训练。
 
 预期数量：
 
@@ -288,6 +308,9 @@ python -m data_generation.robot_bev.cli.generate_replica \
   --split-file data_generation/robot_bev/configs/replica_splits.example.json \
   --output-dir "$PRODUCTION_ROOT" \
   --num-frames 600 \
+  --min-points 20 \
+  --min-observed-coverage 0.01 \
+  --max-quality-rejects 10000 \
   --gpu-id 0 \
   --disable-physics \
   --recompute-navmesh \

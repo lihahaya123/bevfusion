@@ -171,14 +171,14 @@ class BEVFusion(Base3DFusionModel):
     def voxelize(self, points, sensor):
         feats, coords, sizes = [], [], []
         for k, res in enumerate(points):
+            voxelizer = self.encoders[sensor]["voxelize"]
+            max_num_points = getattr(voxelizer, "max_num_points", 1)
             if res.shape[0] == 0:
-                voxelizer = self.encoders[sensor]["voxelize"]
-                max_num_points = getattr(voxelizer, "max_num_points", 1)
                 f = res.new_zeros((1, max_num_points, res.shape[1]))
                 c = torch.zeros((1, 3), device=res.device, dtype=torch.int)
                 n = torch.ones((1,), device=res.device, dtype=torch.int)
             else:
-                ret = self.encoders[sensor]["voxelize"](res)
+                ret = voxelizer(res)
                 if len(ret) == 3:
                     # hard voxelize
                     f, c, n = ret
@@ -186,6 +186,28 @@ class BEVFusion(Base3DFusionModel):
                     assert len(ret) == 2
                     f, c = ret
                     n = None
+            if f.shape[0] < 2:
+                if f.dim() == 3:
+                    dummy_f = f.new_zeros((2 - f.shape[0], f.shape[1], f.shape[2]))
+                else:
+                    dummy_f = f.new_zeros((2 - f.shape[0], f.shape[1]))
+                dummy_c = c.new_zeros((2 - c.shape[0], c.shape[1]))
+                for dummy_idx in range(dummy_c.shape[0]):
+                    if dummy_c.shape[1] == 0:
+                        continue
+                    for candidate in range(8):
+                        dummy_c[dummy_idx].zero_()
+                        dummy_c[dummy_idx, -1] = candidate
+                        used = c
+                        if dummy_idx > 0:
+                            used = torch.cat([used, dummy_c[:dummy_idx]], dim=0)
+                        if not (used == dummy_c[dummy_idx]).all(dim=1).any():
+                            break
+                f = torch.cat([f, dummy_f], dim=0)
+                c = torch.cat([c, dummy_c], dim=0)
+                if n is not None:
+                    dummy_n = n.new_ones((2 - n.shape[0],))
+                    n = torch.cat([n, dummy_n], dim=0)
             feats.append(f)
             coords.append(F.pad(c, (1, 0), mode="constant", value=k))
             if n is not None:

@@ -627,8 +627,14 @@ def _validate_args(args: argparse.Namespace) -> None:
         raise ValueError("--depth-stride must be positive")
     if args.max_points <= 0:
         raise ValueError("--max-points must be positive")
+    if args.min_points < 0:
+        raise ValueError("--min-points must be non-negative")
+    if args.max_quality_rejects < 0:
+        raise ValueError("--max-quality-rejects must be non-negative")
     if not 0.0 <= args.min_semantic_coverage <= 1.0:
         raise ValueError("--min-semantic-coverage must be between 0 and 1")
+    if not 0.0 <= args.min_observed_coverage <= 1.0:
+        raise ValueError("--min-observed-coverage must be between 0 and 1")
     if min(args.width, args.height) <= 0:
         raise ValueError("Sensor resolution must be positive")
     if not 0.0 < args.hfov < 180.0:
@@ -760,6 +766,7 @@ def _advance_trajectory(
 def _validate_replayed_frame(
     args: argparse.Namespace,
     frame_idx: int,
+    trajectory_step: int,
     record: Dict[str, object],
     state,
 ) -> None:
@@ -771,14 +778,14 @@ def _validate_replayed_frame(
             f"expected {frame_idx}"
         )
     expected_timestamp = (
-        args.timestamp_start + frame_idx * args.timestamp_step
+        args.timestamp_start + trajectory_step * args.timestamp_step
     )
     record_timestamp = record.get("timestamp")
     if record_timestamp != expected_timestamp:
         raise RuntimeError(
             f"Resume replay manifest mismatch for scene {args.scene!r} "
-            f"at frame {frame_idx:06d}: timestamp={record_timestamp!r}, "
-            f"expected {expected_timestamp}"
+            f"at frame {frame_idx:06d}/trajectory_step={trajectory_step}: "
+            f"timestamp={record_timestamp!r}, expected {expected_timestamp}"
         )
 
     expected_pose = np.asarray(record.get("T_map_base"), dtype=np.float32)
@@ -812,18 +819,36 @@ def _initialize_trajectory(
     """Initialize from the seed and deterministically replay committed poses."""
     initialize_agent(sim, args)
     trajectory = TrajectoryState()
-    for frame_idx, record in enumerate(existing_manifest):
-        if frame_idx > 0:
+    if not existing_manifest:
+        return trajectory
+
+    records_by_step: Dict[int, Tuple[int, Dict[str, object]]] = {}
+    for index, record in enumerate(existing_manifest):
+        trajectory_step = int(record.get("trajectory_step", record["frame_id"]))
+        if trajectory_step in records_by_step:
+            raise RuntimeError(
+                f"Resume replay manifest contains duplicate trajectory_step "
+                f"{trajectory_step} in scene {args.scene!r}"
+            )
+        records_by_step[trajectory_step] = (index, record)
+
+    last_step = max(records_by_step)
+    for trajectory_step in range(last_step + 1):
+        if trajectory_step > 0:
             transition = _advance_trajectory(
                 sim,
                 args,
-                frame_idx,
+                trajectory_step,
                 trajectory,
                 render_observations=False,
             )
             trajectory = transition.trajectory
-        state = sim.get_agent(0).get_state()
-        _validate_replayed_frame(args, frame_idx, record, state)
+        if trajectory_step in records_by_step:
+            frame_idx, record = records_by_step[trajectory_step]
+            state = sim.get_agent(0).get_state()
+            _validate_replayed_frame(
+                args, frame_idx, trajectory_step, record, state
+            )
     return trajectory
 
 
@@ -910,14 +935,33 @@ def generate_scene(
             )
         print(f"Semantic id mappings={len(semantic_id_to_class)}")
 
-        for frame_idx in range(len(existing_manifest), args.num_frames):
-            if frame_idx == 0:
+        accepted_frame_idx = len(existing_manifest)
+        if existing_manifest:
+            last_trajectory_step = max(
+                int(record.get("trajectory_step", record["frame_id"]))
+                for record in existing_manifest
+            )
+            trajectory_step = last_trajectory_step + 1
+        else:
+            trajectory_step = 0
+        quality_rejects = 0
+
+        while accepted_frame_idx < args.num_frames:
+            if quality_rejects > args.max_quality_rejects:
+                raise RuntimeError(
+                    "Exceeded RobotBEV quality rejection limit for scene "
+                    f"{args.scene!r}: rejects={quality_rejects}, "
+                    f"limit={args.max_quality_rejects}, "
+                    f"accepted={accepted_frame_idx}/{args.num_frames}. "
+                    "Use a different seed/start pose or relax quality thresholds."
+                )
+            if trajectory_step == 0:
                 obs = sim.get_sensor_observations()
             else:
                 transition = _advance_trajectory(
                     sim,
                     args,
-                    frame_idx,
+                    trajectory_step,
                     trajectory,
                     render_observations=True,
                 )
@@ -930,7 +974,7 @@ def generate_scene(
 
             state = sim.get_agent(0).get_state()
             timestamp = (
-                args.timestamp_start + frame_idx * args.timestamp_step
+                args.timestamp_start + trajectory_step * args.timestamp_step
             )
             rgb = np.asarray(obs[RGB_UUID])[:, :, :3].astype(np.uint8)
             depth = np.asarray(obs[DEPTH_UUID], dtype=np.float32)
@@ -939,19 +983,38 @@ def generate_scene(
                 semantic_obs.size == 0
                 or int(np.max(semantic_obs)) > np.iinfo(np.uint16).max
             ):
-                raise RuntimeError(
-                    "Front semantic observation is empty or exceeds uint16 range"
+                quality_rejects += 1
+                print(
+                    f"[skip step={trajectory_step:06d}] "
+                    "front semantic observation is empty or exceeds uint16 "
+                    f"range; accepted={accepted_frame_idx}/{args.num_frames}"
                 )
+                trajectory_step += 1
+                continue
             depth_valid = np.isfinite(depth) & (depth > 0.0)
+            if not np.any(depth_valid):
+                quality_rejects += 1
+                print(
+                    f"[skip step={trajectory_step:06d}] "
+                    "front depth observation has no valid pixels; "
+                    f"accepted={accepted_frame_idx}/{args.num_frames}"
+                )
+                trajectory_step += 1
+                continue
             semantic_coverage = float(
                 np.mean(semantic_obs[depth_valid] != 0)
             )
             if semantic_coverage < args.min_semantic_coverage:
-                raise RuntimeError(
-                    "Front semantic coverage is below the Replica quality "
-                    f"threshold: coverage={semantic_coverage:.6f} "
-                    f"threshold={args.min_semantic_coverage:.6f}"
+                quality_rejects += 1
+                print(
+                    f"[skip step={trajectory_step:06d}] "
+                    "front semantic coverage below threshold: "
+                    f"coverage={semantic_coverage:.6f} "
+                    f"threshold={args.min_semantic_coverage:.6f}; "
+                    f"accepted={accepted_frame_idx}/{args.num_frames}"
                 )
+                trajectory_step += 1
+                continue
             depth_mm = np.zeros(depth.shape, dtype=np.uint16)
             depth_mm[depth_valid] = np.clip(
                 depth[depth_valid] * 1000.0, 0.0, 65535.0
@@ -969,6 +1032,16 @@ def generate_scene(
                 args.max_points,
                 semantic_obs,
             )
+            if points.shape[0] < args.min_points:
+                quality_rejects += 1
+                print(
+                    f"[skip step={trajectory_step:06d}] "
+                    "front point cloud below threshold: "
+                    f"points={points.shape[0]} threshold={args.min_points}; "
+                    f"accepted={accepted_frame_idx}/{args.num_frames}"
+                )
+                trajectory_step += 1
+                continue
             views: List[
                 Tuple[np.ndarray, Optional[np.ndarray], np.ndarray]
             ] = [
@@ -997,6 +1070,18 @@ def generate_scene(
                 xbound,
                 ybound,
             )
+            observed_coverage = float(np.mean(valid_mask))
+            if observed_coverage < args.min_observed_coverage:
+                quality_rejects += 1
+                print(
+                    f"[skip step={trajectory_step:06d}] "
+                    "observed BEV coverage below threshold: "
+                    f"coverage={observed_coverage:.6f} "
+                    f"threshold={args.min_observed_coverage:.6f}; "
+                    f"accepted={accepted_frame_idx}/{args.num_frames}"
+                )
+                trajectory_step += 1
+                continue
             mask = make_bev_labels(
                 sim,
                 state,
@@ -1011,7 +1096,7 @@ def generate_scene(
             )
 
             payload = FramePayload(
-                frame_id=frame_idx,
+                frame_id=accepted_frame_idx,
                 timestamp=timestamp,
                 rgb=rgb,
                 points=points.astype(np.float32, copy=False),
@@ -1028,15 +1113,23 @@ def generate_scene(
                 map_from_base=map_from_base_matrix(state),
                 depth_mm=depth_mm,
                 semantics=semantic_obs.astype(np.uint16, copy=False),
+                extra_info={
+                    "trajectory_step": int(trajectory_step),
+                    "semantic_coverage": float(semantic_coverage),
+                    "observed_coverage": float(observed_coverage),
+                },
             )
             writer.write_frame(args.scene, scene_split, payload)
             print(
-                f"[{frame_idx + 1:06d}/{args.num_frames:06d}] "
+                f"[{accepted_frame_idx + 1:06d}/{args.num_frames:06d}] "
+                f"step={trajectory_step:06d} "
                 f"points={points.shape[0]} "
-                f"valid={float(np.mean(valid_mask)):.3f} "
+                f"valid={observed_coverage:.3f} "
                 f"semantic={semantic_coverage:.3f} "
                 f"mask={tuple(mask.shape)}"
             )
+            accepted_frame_idx += 1
+            trajectory_step += 1
 
         summary = writer.finalize_scene(args.scene, scene_split)
         print(json.dumps(summary, indent=2))
@@ -1236,7 +1329,35 @@ def make_parser() -> argparse.ArgumentParser:
     parser.add_argument("--max-depth", type=float, default=4.0)
     parser.add_argument("--depth-stride", type=int, default=4)
     parser.add_argument("--max-points", type=int, default=20000)
+    parser.add_argument(
+        "--min-points",
+        type=int,
+        default=20,
+        help=(
+            "Minimum number of current-frame points required after depth "
+            "projection. Frames below this threshold are rejected so sparse "
+            "LiDAR batches do not destabilize training."
+        ),
+    )
     parser.add_argument("--min-semantic-coverage", type=float, default=0.95)
+    parser.add_argument(
+        "--min-observed-coverage",
+        type=float,
+        default=0.01,
+        help=(
+            "Minimum fraction of observed BEV cells required for a frame. "
+            "This guards against nearly empty supervision masks."
+        ),
+    )
+    parser.add_argument(
+        "--max-quality-rejects",
+        type=int,
+        default=10000,
+        help=(
+            "Maximum number of low-quality trajectory steps to skip while "
+            "trying to fill --num-frames for one scene."
+        ),
+    )
     unsupported_visualization_help = (
         "DEPRECATED AND UNSUPPORTED: the canonical writer does not emit "
         "legacy visualization artifacts; this option is rejected"

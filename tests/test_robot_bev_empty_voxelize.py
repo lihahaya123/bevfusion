@@ -29,7 +29,7 @@ def test_voxelize_handles_empty_point_tensor():
         "lidar",
     )
 
-    assert feats.shape == (2, 5)
-    assert coords.shape == (2, 4)
-    assert sizes.shape == (2,)
-    assert coords[:, 0].tolist() == [0, 1]
+    assert feats.shape == (4, 5)
+    assert coords.shape == (4, 4)
+    assert sizes.shape == (4,)
+    assert coords[:, 0].tolist() == [0, 0, 1, 1]

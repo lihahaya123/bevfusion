@@ -13,8 +13,10 @@
 # limitations under the License.
 import sys
 import torch
+import torch.nn.functional as F
 from collections import OrderedDict
 from torch import nn
+from torch.nn.modules.batchnorm import _BatchNorm
 
 from .structure import SparseConvTensor
 
@@ -42,6 +44,26 @@ def _mean_update(vals, m_vals, t):
     if len(outputs) == 1:
         outputs = outputs[0]
     return outputs
+
+
+def _apply_sparse_feature_module(module, features):
+    if (
+        isinstance(module, _BatchNorm)
+        and module.training
+        and features.shape[0] < 2
+    ):
+        if module.running_mean is not None and module.running_var is not None:
+            return F.batch_norm(
+                features,
+                module.running_mean,
+                module.running_var,
+                module.weight,
+                module.bias,
+                training=False,
+                momentum=0.0,
+                eps=module.eps,
+            )
+    return module(features)
 
 
 class SparseModule(nn.Module):
@@ -133,9 +155,11 @@ class SparseSequential(SparseModule):
             else:
                 if isinstance(input, SparseConvTensor):
                     if input.indices.shape[0] != 0:
-                        input.features = module(input.features)
+                        input.features = _apply_sparse_feature_module(
+                            module, input.features
+                        )
                 else:
-                    input = module(input)
+                    input = _apply_sparse_feature_module(module, input)
         return input
 
     def fused(self):

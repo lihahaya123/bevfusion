@@ -3,6 +3,7 @@ import copy
 import os
 import re
 import sys
+import time
 import warnings
 from pathlib import Path
 
@@ -45,6 +46,19 @@ def safe_visualization_name(value) -> str:
     name = str(value)
     name = re.sub(r"[^0-9A-Za-z_.-]+", "_", name).strip("._")
     return name or "unnamed"
+
+
+def default_metrics_out_path(args) -> str:
+    checkpoint_name = safe_visualization_name(Path(args.checkpoint).stem)
+    timestamp = time.strftime("%Y%m%d_%H%M%S", time.localtime())
+    filename = f"metrics_{checkpoint_name}_{timestamp}.json"
+    if args.show_dir:
+        base_dir = Path(args.show_dir).expanduser().parent
+    elif args.out:
+        base_dir = Path(args.out).expanduser().parent
+    else:
+        base_dir = Path(args.checkpoint).expanduser().parent
+    return str(base_dir / filename)
 
 
 def save_robotbev_visualizations(dataset, outputs, out_dir, map_score=0.5) -> None:
@@ -110,6 +124,10 @@ def parse_args():
     )
     parser.add_argument("--show", action="store_true", help="show results")
     parser.add_argument("--show-dir", help="directory where results will be saved")
+    parser.add_argument(
+        "--metrics-out",
+        help="path to save evaluation metrics, e.g. results/metrics.json",
+    )
     parser.add_argument(
         "--map-score",
         type=float,
@@ -188,7 +206,16 @@ def main():
     torch.backends.cudnn.benchmark = True
     torch.cuda.set_device(dist.local_rank())
 
-    if not (args.out or args.eval or args.format_only or args.show or args.show_dir):
+    if not (
+        args.out
+        or args.eval
+        or args.format_only
+        or args.show
+        or args.show_dir
+        or args.metrics_out
+    ):
+        args.eval = ["map"]
+    if args.metrics_out and not args.eval:
         args.eval = ["map"]
 
     if args.eval and args.format_only:
@@ -300,7 +327,14 @@ def main():
                 eval_kwargs.update(kwargs)
             else:
                 eval_kwargs.update(dict(metric=args.eval, **kwargs))
-            print(dataset.evaluate(outputs, **eval_kwargs))
+            metrics = dataset.evaluate(outputs, **eval_kwargs)
+            print(metrics)
+            metrics_out = args.metrics_out or default_metrics_out_path(args)
+            metrics_dir = os.path.dirname(metrics_out)
+            if metrics_dir:
+                mmcv.mkdir_or_exist(metrics_dir)
+            print(f"\nwriting metrics to {metrics_out}")
+            mmcv.dump(metrics, metrics_out)
 
 
 if __name__ == "__main__":

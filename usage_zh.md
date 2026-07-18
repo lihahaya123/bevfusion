@@ -474,6 +474,21 @@ torchpack dist-run -np 1 python tools/test.py \
   dataset_root=/data/
 ```
 
+其中：
+
+```text
+--eval map                              # 计算指标，并自动保存 metrics JSON
+--show-dir .../show                     # 保存 BEV 可视化图片
+```
+
+如果使用上面的 `--show-dir /data/replica_18x600/results/show`，指标会自动保存到：
+
+```text
+/data/replica_18x600/results/metrics_latest_<timestamp>.json
+```
+
+也可以继续用 `--metrics-out <path>` 手动指定指标保存路径。
+
 测试验证集指标最好的模型时，将 checkpoint 路径替换为对应的
 `best_robotbev_map_iou_max_epoch_<N>.pth`。
 

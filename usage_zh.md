@@ -512,6 +512,38 @@ torchpack dist-run -np 1 python tools/test.py \
 
 也可以继续用 `--metrics-out <path>` 手动指定指标保存路径。
 
+测试推理输出包括：
+
+```text
+/data/replica_18x600/results/
+  metrics_latest_<timestamp>.json     # 本次 --eval map 指标
+  show/
+    map_pred/                         # 模型预测 BEV
+    map_gt/                           # GT BEV
+    map_overlay/                      # 预测和 GT 对比图
+```
+
+`map_pred/` 和 `map_gt/` 使用 RobotBEV 类别颜色：
+
+| 类别 | 含义 | 颜色 | RGB |
+|---|---|---|---|
+| background | 未预测/无类别区域 | 浅灰白 | `(240, 240, 240)` |
+| floor | 地面 | 灰色 | `(160, 160, 160)` |
+| carpet | 地毯 | 蓝色 | `(70, 130, 180)` |
+| obstacle | 障碍物 | 红色 | `(220, 50, 47)` |
+| wall | 墙体 | 深灰色 | `(90, 90, 90)` |
+| furniture | 家具 | 橙色 | `(255, 170, 0)` |
+| other | 其他语义 | 紫色 | `(150, 80, 200)` |
+
+`map_overlay/` 不是类别颜色，而是预测与 GT 的对比图：
+
+| 颜色 | 含义 |
+|---|---|
+| 绿色 | GT 有，预测没有 |
+| 红色 | 预测有，GT 没有 |
+| 黄色 | GT 和预测重合 |
+| 黑色 | GT 和预测都没有 |
+
 测试验证集指标最好的模型时，将 checkpoint 路径替换为对应的
 `best_robotbev_map_iou_max_epoch_<N>.pth`。
 

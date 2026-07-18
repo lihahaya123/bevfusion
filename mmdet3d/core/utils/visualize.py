@@ -41,6 +41,8 @@ MAP_PALETTE = {
     "carpet": (70, 130, 180),
     "obstacle": (220, 50, 47),
     "wall": (90, 90, 90),
+    "furniture": (255, 170, 0),
+    "other": (150, 80, 200),
     "threshold": (255, 190, 60),
     "unknown": (20, 20, 20),
 }

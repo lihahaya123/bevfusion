@@ -10,7 +10,13 @@ from matplotlib import pyplot as plt
 from data_generation.robot_bev.schema import MAP_PALETTE as ROBOT_BEV_MAP_PALETTE
 from ..bbox import LiDARInstance3DBoxes
 
-__all__ = ["visualize_camera", "visualize_lidar", "visualize_map"]
+__all__ = [
+    "scores_to_single_label_masks",
+    "visualize_camera",
+    "visualize_lidar",
+    "visualize_map",
+    "visualize_map_scores",
+]
 
 
 OBJECT_PALETTE = {
@@ -185,3 +191,44 @@ def visualize_map(
 
     mmcv.mkdir_or_exist(os.path.dirname(fpath))
     mmcv.imwrite(canvas, fpath)
+
+
+def scores_to_single_label_masks(
+    scores: np.ndarray,
+    threshold: float,
+) -> np.ndarray:
+    """Convert per-class map scores to one visible class per BEV cell.
+
+    The segmentation head predicts independent sigmoid scores for each class.
+    For visualization, drawing all thresholded channels in class order can make
+    later classes hide earlier ones. This helper keeps only the highest-score
+    class in each BEV cell and leaves the cell as background when that maximum
+    score is below ``threshold``.
+    """
+
+    scores = np.asarray(scores)
+    if scores.ndim != 3:
+        raise ValueError(f"scores must have shape [C,H,W], got {scores.shape}")
+    if scores.shape[0] == 0:
+        raise ValueError("scores must contain at least one class channel")
+
+    labels = np.argmax(scores, axis=0)
+    max_scores = np.max(scores, axis=0)
+    valid = max_scores >= threshold
+
+    masks = np.zeros(scores.shape, dtype=bool)
+    rows, cols = np.nonzero(valid)
+    masks[labels[valid], rows, cols] = True
+    return masks
+
+
+def visualize_map_scores(
+    fpath: str,
+    scores: np.ndarray,
+    *,
+    classes: List[str],
+    threshold: float = 0.5,
+    background: Tuple[int, int, int] = (240, 240, 240),
+) -> None:
+    masks = scores_to_single_label_masks(scores, threshold)
+    visualize_map(fpath, masks, classes=classes, background=background)

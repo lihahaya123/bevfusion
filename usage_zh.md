@@ -541,6 +541,12 @@ torchpack dist-run -np 1 python tools/test.py \
 `map_pred/` 和 `map_gt/` 使用统一 RobotBEV 类别颜色；该颜色也用于数据生成
 几何诊断图中的 BEV label：
 
+`map_pred/` 会对每个 BEV 网格选择置信度最高的类别；如果最高置信度低于
+`--map-score`，则显示为 background。它不会再因为类别顺序导致 `other`
+覆盖其它类别。`map_gt/` 仍按 GT mask 绘制。
+
+![RobotBEV 类别颜色示意图](assets/robotbev_palette.svg)
+
 | 类别 | 含义 | 颜色 | RGB |
 |---|---|---|---|
 | background | 未预测/无类别区域 | 浅灰白 | `(240, 240, 240)` |

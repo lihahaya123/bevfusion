@@ -25,7 +25,7 @@ from mmdet3d.datasets import build_dataloader, build_dataset
 from mmdet3d.models import build_model
 from mmdet.apis import multi_gpu_test, set_random_seed
 from mmdet.datasets import replace_ImageToTensor
-from mmdet3d.core.utils import visualize_map
+from mmdet3d.core.utils import visualize_map, visualize_map_scores
 from mmdet3d.utils import recursive_eval
 
 
@@ -72,11 +72,11 @@ def save_robotbev_visualizations(dataset, outputs, out_dir, map_score=0.5) -> No
         pred = result.get("masks_bev")
         gt = result.get("gt_masks_bev")
         if pred is not None:
-            pred_mask = pred.numpy() >= map_score
-            visualize_map(
+            visualize_map_scores(
                 os.path.join(out_dir, "map_pred", f"{name}.png"),
-                pred_mask.astype(bool),
+                pred.numpy(),
                 classes=map_classes,
+                threshold=map_score,
             )
         if gt is not None:
             gt_mask = gt.numpy().astype(bool)

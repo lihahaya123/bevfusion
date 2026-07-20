@@ -1,0 +1,50 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="220" viewBox="0 0 960 220" role="img" aria-labelledby="title desc">
+  <title id="title">RobotBEV semantic class color palette</title>
+  <desc id="desc">Six equal regions showing RobotBEV colors for floor, carpet, obstacle, wall, furniture, and other.</desc>
+  <rect width="960" height="220" fill="#f5f5f5"/>
+  <g font-family="Arial, Helvetica, sans-serif" text-anchor="middle">
+    <g transform="translate(0,0)">
+      <rect x="0" y="0" width="160" height="220" fill="rgb(160,160,160)"/>
+      <text x="80" y="92" font-size="22" font-weight="700" fill="#111">floor</text>
+      <text x="80" y="122" font-size="16" fill="#111">地面</text>
+      <text x="80" y="150" font-size="14" fill="#111">(160,160,160)</text>
+    </g>
+    <g transform="translate(160,0)">
+      <rect x="0" y="0" width="160" height="220" fill="rgb(70,130,180)"/>
+      <text x="80" y="92" font-size="22" font-weight="700" fill="#fff">carpet</text>
+      <text x="80" y="122" font-size="16" fill="#fff">地毯</text>
+      <text x="80" y="150" font-size="14" fill="#fff">(70,130,180)</text>
+    </g>
+    <g transform="translate(320,0)">
+      <rect x="0" y="0" width="160" height="220" fill="rgb(220,50,47)"/>
+      <text x="80" y="92" font-size="22" font-weight="700" fill="#fff">obstacle</text>
+      <text x="80" y="122" font-size="16" fill="#fff">障碍物</text>
+      <text x="80" y="150" font-size="14" fill="#fff">(220,50,47)</text>
+    </g>
+    <g transform="translate(480,0)">
+      <rect x="0" y="0" width="160" height="220" fill="rgb(90,90,90)"/>
+      <text x="80" y="92" font-size="22" font-weight="700" fill="#fff">wall</text>
+      <text x="80" y="122" font-size="16" fill="#fff">墙体</text>
+      <text x="80" y="150" font-size="14" fill="#fff">(90,90,90)</text>
+    </g>
+    <g transform="translate(640,0)">
+      <rect x="0" y="0" width="160" height="220" fill="rgb(255,170,0)"/>
+      <text x="80" y="92" font-size="22" font-weight="700" fill="#111">furniture</text>
+      <text x="80" y="122" font-size="16" fill="#111">家具</text>
+      <text x="80" y="150" font-size="14" fill="#111">(255,170,0)</text>
+    </g>
+    <g transform="translate(800,0)">
+      <rect x="0" y="0" width="160" height="220" fill="rgb(150,80,200)"/>
+      <text x="80" y="92" font-size="22" font-weight="700" fill="#fff">other</text>
+      <text x="80" y="122" font-size="16" fill="#fff">其他</text>
+      <text x="80" y="150" font-size="14" fill="#fff">(150,80,200)</text>
+    </g>
+  </g>
+  <g stroke="#ffffff" stroke-width="2" opacity="0.9">
+    <line x1="160" y1="0" x2="160" y2="220"/>
+    <line x1="320" y1="0" x2="320" y2="220"/>
+    <line x1="480" y1="0" x2="480" y2="220"/>
+    <line x1="640" y1="0" x2="640" y2="220"/>
+    <line x1="800" y1="0" x2="800" y2="220"/>
+  </g>
+</svg>

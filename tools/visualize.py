@@ -22,7 +22,12 @@ except ImportError:
     from tqdm import tqdm
 
 from mmdet3d.core import LiDARInstance3DBoxes
-from mmdet3d.core.utils import visualize_camera, visualize_lidar, visualize_map
+from mmdet3d.core.utils import (
+    scores_to_single_label_masks,
+    visualize_camera,
+    visualize_lidar,
+    visualize_map,
+)
 from mmdet3d.datasets import build_dataloader, build_dataset
 from mmdet3d.models import build_model
 
@@ -141,7 +146,7 @@ def main() -> None:
             masks = masks.astype(np.bool)
         elif args.mode == "pred" and "masks_bev" in outputs[0]:
             masks = outputs[0]["masks_bev"].numpy()
-            masks = masks >= args.map_score
+            masks = scores_to_single_label_masks(masks, args.map_score)
         else:
             masks = None
 

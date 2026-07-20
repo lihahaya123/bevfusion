@@ -7,7 +7,7 @@ from typing import Iterable, Mapping, Optional, Sequence, Tuple
 import numpy as np
 from PIL import Image, ImageDraw
 
-from .schema import BEV_SHAPE, MAP_CLASSES, POINT_DIMENSIONS
+from .schema import BEV_SHAPE, MAP_CLASSES, MAP_PALETTE, POINT_DIMENSIONS
 
 
 _BEV_SCALE = 4
@@ -15,14 +15,7 @@ _RGB_POINT_COLOR = (255, 64, 64)
 _BEV_POINT_COLOR = (255, 255, 255)
 _X_AXIS_COLOR = (255, 96, 32)
 _Y_AXIS_COLOR = (32, 200, 255)
-_CLASS_COLORS = (
-    (80, 180, 80),
-    (180, 120, 220),
-    (230, 80, 70),
-    (220, 180, 70),
-    (70, 130, 220),
-    (180, 180, 180),
-)
+_CLASS_COLORS = tuple(MAP_PALETTE[name] for name in MAP_CLASSES)
 _SWEEP_COLORS = (
     (32, 200, 255),
     (255, 96, 192),

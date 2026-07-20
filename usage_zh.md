@@ -146,6 +146,19 @@ python -m data_generation.robot_bev.cli.validate_dataset \
   --geometry-frame 5
 ```
 
+也可以一次生成同一场景的多帧诊断图：
+
+```bash
+python -m data_generation.robot_bev.cli.validate_dataset \
+  --root "$OUTPUT_ROOT" \
+  --split train \
+  --geometry-scene office_0 \
+  --geometry-frame-range 0 100 10
+```
+
+`--geometry-frame-range START STOP STEP` 使用 Python `range(START, STOP, STEP)`
+语义；例如 `0 100 10` 会生成 `0, 10, 20, ..., 90`，不包含 `100`。
+
 诊断图会写入：
 
 ```text
@@ -165,6 +178,8 @@ $OUTPUT_ROOT/diagnostics/<scene_id>/
 BEV label、observed mask 和 BEV+点云叠加图。其余三张分别用于检查相机
 投影、BEV 方向和历史帧对齐。文件存在不代表几何正确，需要人工确认
 x-forward/y-left、相机投影和 sweep 对齐是否符合预期。
+其中 BEV label 类别颜色与 `tools/test.py`、`tools/visualize.py` 的
+`map_pred/`、`map_gt/` 保持一致。
 
 本地可直接打开 PNG：
 
@@ -523,7 +538,8 @@ torchpack dist-run -np 1 python tools/test.py \
     map_overlay/                      # 预测和 GT 对比图
 ```
 
-`map_pred/` 和 `map_gt/` 使用 RobotBEV 类别颜色：
+`map_pred/` 和 `map_gt/` 使用统一 RobotBEV 类别颜色；该颜色也用于数据生成
+几何诊断图中的 BEV label：
 
 | 类别 | 含义 | 颜色 | RGB |
 |---|---|---|---|

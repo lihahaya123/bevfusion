@@ -13,6 +13,14 @@ MAP_CLASSES: Tuple[str, ...] = (
     "furniture",
     "other",
 )
+MAP_PALETTE = {
+    "floor": (160, 160, 160),
+    "carpet": (70, 130, 180),
+    "obstacle": (220, 50, 47),
+    "wall": (90, 90, 90),
+    "furniture": (255, 170, 0),
+    "other": (150, 80, 200),
+}
 BEV_XBOUND = (0.0, 3.0, 0.02)
 BEV_YBOUND = (-1.5, 1.5, 0.02)
 BEV_SHAPE = (6, 150, 150)

@@ -7,6 +7,7 @@ import mmcv
 import numpy as np
 from matplotlib import pyplot as plt
 
+from data_generation.robot_bev.schema import MAP_PALETTE as ROBOT_BEV_MAP_PALETTE
 from ..bbox import LiDARInstance3DBoxes
 
 __all__ = ["visualize_camera", "visualize_lidar", "visualize_map"]
@@ -37,15 +38,10 @@ MAP_PALETTE = {
     "road_divider": (202, 178, 214),
     "lane_divider": (106, 61, 154),
     "divider": (106, 61, 154),
-    "floor": (160, 160, 160),
-    "carpet": (70, 130, 180),
-    "obstacle": (220, 50, 47),
-    "wall": (90, 90, 90),
-    "furniture": (255, 170, 0),
-    "other": (150, 80, 200),
     "threshold": (255, 190, 60),
     "unknown": (20, 20, 20),
 }
+MAP_PALETTE.update(ROBOT_BEV_MAP_PALETTE)
 
 
 def visualize_camera(

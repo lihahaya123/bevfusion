@@ -165,7 +165,7 @@ robot_train_pipeline:
     load_augmented: ${load_augmented}
   -
     type: LoadPointsFromMultiSweeps
-    sweeps_num: 5
+    sweeps_num: 3
     load_dim: ${load_dim}
     use_dim: ${use_dim}
     reduce_beams: ${reduce_beams}
@@ -249,7 +249,7 @@ robot_test_pipeline:
     load_augmented: ${load_augmented}
   -
     type: LoadPointsFromMultiSweeps
-    sweeps_num: 10
+    sweeps_num: 3
     load_dim: ${load_dim}
     use_dim: ${use_dim}
     reduce_beams: ${reduce_beams}

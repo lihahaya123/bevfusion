@@ -62,7 +62,7 @@ SMOKE_SCENES = (
 )
 
 
-def _build_dataset(root: Path) -> None:
+def _build_dataset(root: Path, scenes=("scene_a",)) -> None:
     writer = RobotBEVWriter(
         root=root,
         dataset_id="fixture_v4",
@@ -70,31 +70,32 @@ def _build_dataset(root: Path) -> None:
         source_dataset="fixture",
         generator_name="pytest",
         generator_version="1",
-        splits={"train": ["scene_a"], "val": [], "test": []},
+        splits={"train": list(scenes), "val": [], "test": []},
         generation_parameters={"fixture": True},
     )
     labels = np.zeros((6, 150, 150), dtype=np.uint8)
     labels[0, 45:55, 70:80] = 1
-    writer.write_frame(
-        "scene_a",
-        "train",
-        FramePayload(
-            frame_id=0,
-            timestamp=1_000_000,
-            rgb=np.zeros((8, 12, 3), dtype=np.uint8),
-            points=np.array([[0.0, 0.0, 2.0, 0.5, 0.0]], dtype=np.float32),
-            bev_labels=labels,
-            observed_mask=np.ones((150, 150), dtype=np.uint8),
-            class_validity=np.ones((6,), dtype=np.uint8),
-            cam_intrinsic=np.array(
-                [[10, 0, 6], [0, 10, 4], [0, 0, 1]], dtype=np.float32
+    for scene in scenes:
+        writer.write_frame(
+            scene,
+            "train",
+            FramePayload(
+                frame_id=0,
+                timestamp=1_000_000,
+                rgb=np.zeros((8, 12, 3), dtype=np.uint8),
+                points=np.array([[0.0, 0.0, 2.0, 0.5, 0.0]], dtype=np.float32),
+                bev_labels=labels,
+                observed_mask=np.ones((150, 150), dtype=np.uint8),
+                class_validity=np.ones((6,), dtype=np.uint8),
+                cam_intrinsic=np.array(
+                    [[10, 0, 6], [0, 10, 4], [0, 0, 1]], dtype=np.float32
+                ),
+                camera2base=np.eye(4, dtype=np.float32),
+                lidar2base=np.eye(4, dtype=np.float32),
+                map_from_base=np.eye(4, dtype=np.float32),
             ),
-            camera2base=np.eye(4, dtype=np.float32),
-            lidar2base=np.eye(4, dtype=np.float32),
-            map_from_base=np.eye(4, dtype=np.float32),
-        ),
-    )
-    writer.finalize_scene("scene_a", "train")
+        )
+        writer.finalize_scene(scene, "train")
     writer.finalize_dataset()
 
 
@@ -119,6 +120,7 @@ def test_validation_cli_help():
     assert "--root" in completed.stdout
     assert "--split" in completed.stdout
     assert "--geometry-scene" in completed.stdout
+    assert "--geometry-all-scenes" in completed.stdout
     assert "--geometry-frame" in completed.stdout
 
 
@@ -149,6 +151,38 @@ def test_validation_cli_prints_json_report_and_geometry_paths(tmp_path):
         "000000_overview.png",
     ]
     assert all(Path(path).is_file() for path in report["geometry_diagnostics"])
+
+
+def test_validation_cli_writes_geometry_for_all_split_scenes(tmp_path):
+    _build_dataset(tmp_path, scenes=("scene_a", "scene_b"))
+
+    completed = _run_cli(
+        "--root",
+        tmp_path,
+        "--split",
+        "train",
+        "--geometry-all-scenes",
+        "--geometry-frame-range",
+        0,
+        1,
+        1,
+    )
+
+    assert completed.returncode == 0, completed.stderr
+    report = json.loads(completed.stdout)
+    diagnostics = report["geometry_diagnostics"]
+    assert set(diagnostics) == {"scene_a", "scene_b"}
+    assert set(diagnostics["scene_a"]) == {"0"}
+    assert set(diagnostics["scene_b"]) == {"0"}
+    for scene_diagnostics in diagnostics.values():
+        paths = scene_diagnostics["0"]
+        assert [Path(path).name for path in paths] == [
+            "000000_rgb_point_overlay.png",
+            "000000_bev_overlay.png",
+            "000000_aligned_sweeps.png",
+            "000000_overview.png",
+        ]
+        assert all(Path(path).is_file() for path in paths)
 
 
 def test_validation_cli_prints_json_error_to_stderr(tmp_path):

@@ -76,6 +76,7 @@ python -m data_generation.robot_bev.cli.generate_replica \
   --split-file data_generation/robot_bev/configs/replica_splits.example.json \
   --output-dir "$OUTPUT_ROOT" \
   --num-frames 10 \
+  --step-size 0.10 --turn-angle 30 --seed 17 \
   --min-points 20 \
   --min-observed-coverage 0.01 \
   --max-quality-rejects 10000 \
@@ -162,6 +163,16 @@ python -m data_generation.robot_bev.cli.validate_dataset \
 
 `--geometry-frame-range START STOP STEP` 使用 Python `range(START, STOP, STEP)`
 语义；例如 `0 100 10` 会生成 `0, 10, 20, ..., 90`，不包含 `100`。
+
+也可以对所选 split 的所有场景生成同一组诊断帧：
+
+```bash
+python -m data_generation.robot_bev.cli.validate_dataset \
+  --root "$OUTPUT_ROOT" \
+  --split train \
+  --geometry-all-scenes \
+  --geometry-frame-range 0 10 1
+```
 
 诊断图会写入：
 

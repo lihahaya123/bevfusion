@@ -29,7 +29,7 @@ def make_payload(frame_id: int) -> FramePayload:
 def make_writer(root) -> RobotBEVWriter:
     return RobotBEVWriter(
         root=root,
-        dataset_id="fixture_v3",
+        dataset_id="fixture_v4",
         source_type="simulation",
         source_dataset="fixture",
         generator_name="pytest",
@@ -42,7 +42,7 @@ def make_writer(root) -> RobotBEVWriter:
 def test_writer_creates_root_relative_canonical_indexes(tmp_path):
     writer = RobotBEVWriter(
         root=tmp_path,
-        dataset_id="fixture_v3",
+        dataset_id="fixture_v4",
         source_type="simulation",
         source_dataset="fixture",
         generator_name="pytest",
@@ -58,17 +58,18 @@ def test_writer_creates_root_relative_canonical_indexes(tmp_path):
         payload = pickle.load(handle)
     info = payload["infos"][0]
     assert info["image_path"] == "scene_a/images/000000.png"
-    assert info["token"] == "fixture_v3:scene_a:000000"
+    assert info["token"] == "fixture_v4:scene_a:000000"
     assert info["class_validity"].tolist() == [1, 1, 1, 1, 1, 1]
     assert "sweeps" not in info
     metadata = json.loads((tmp_path / "dataset_metadata.json").read_text())
-    assert metadata["schema_version"] == 3
+    assert metadata["schema_version"] == 4
+    assert metadata["bev"]["zbound"] == [-0.5, 2.0]
 
 
 def test_writer_refuses_resume_when_generation_contract_changes(tmp_path):
     common = dict(
         root=tmp_path,
-        dataset_id="fixture_v3",
+        dataset_id="fixture_v4",
         source_type="simulation",
         source_dataset="fixture",
         generator_name="pytest",

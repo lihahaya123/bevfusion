@@ -86,7 +86,7 @@ def save_robotbev_visualizations(dataset, outputs, out_dir, map_score=0.5) -> No
                 classes=map_classes,
             )
         if pred is not None and gt is not None:
-            pred_any = (pred.numpy() >= map_score).any(axis=0)
+            pred_any = (pred.numpy() > map_score).any(axis=0)
             gt_any = gt.numpy().astype(bool).any(axis=0)
             overlay = np.zeros((*pred_any.shape, 3), dtype=np.uint8)
             overlay[gt_any] = (0, 180, 0)

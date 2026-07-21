@@ -26,7 +26,7 @@ def _frame(frame_id: int) -> FramePayload:
 def canonical_root(tmp_path):
     writer = RobotBEVWriter(
         root=tmp_path,
-        dataset_id="fixture_v3",
+        dataset_id="fixture_v4",
         source_type="simulation",
         source_dataset="fixture",
         generator_name="pytest",

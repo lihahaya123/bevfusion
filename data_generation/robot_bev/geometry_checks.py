@@ -7,15 +7,24 @@ from typing import Iterable, Mapping, Optional, Sequence, Tuple
 import numpy as np
 from PIL import Image, ImageDraw
 
-from .schema import BEV_SHAPE, MAP_CLASSES, MAP_PALETTE, POINT_DIMENSIONS
+from .schema import (
+    BEV_SHAPE,
+    MAP_CLASSES,
+    MAP_PALETTE,
+    MAP_VISUAL_PRIORITY,
+    POINT_DIMENSIONS,
+)
 
 
 _BEV_SCALE = 4
 _RGB_POINT_COLOR = (255, 64, 64)
 _BEV_POINT_COLOR = (255, 255, 255)
+_UNOBSERVED_COLOR = (6, 6, 10)
+_OBSERVED_UNLABELED_COLOR = (74, 76, 88)
 _X_AXIS_COLOR = (255, 96, 32)
 _Y_AXIS_COLOR = (32, 200, 255)
-_CLASS_COLORS = tuple(MAP_PALETTE[name] for name in MAP_CLASSES)
+_CLASS_COLORS = {name: MAP_PALETTE[name] for name in MAP_CLASSES}
+_VISUAL_DRAW_ORDER = tuple(reversed(MAP_VISUAL_PRIORITY))
 _SWEEP_COLORS = (
     (32, 200, 255),
     (255, 96, 192),
@@ -298,14 +307,17 @@ def _bev_label_cells(
     observed: np.ndarray,
     blended: bool,
 ) -> np.ndarray:
-    cells = np.full(BEV_SHAPE[1:] + (3,), (16, 16, 20), dtype=np.uint8)
-    cells[observed.astype(bool)] = (48, 48, 54)
-    for class_index, color in enumerate(_CLASS_COLORS):
+    cells = np.full(BEV_SHAPE[1:] + (3,), _UNOBSERVED_COLOR, dtype=np.uint8)
+    cells[observed.astype(bool)] = _OBSERVED_UNLABELED_COLOR
+    base_cells = cells.copy()
+    for class_name in _VISUAL_DRAW_ORDER:
+        class_index = MAP_CLASSES.index(class_name)
+        color = _CLASS_COLORS[class_name]
         mask = labels[class_index].astype(bool)
         if blended:
             cells[mask] = (
                 (
-                    cells[mask].astype(np.uint16)
+                    base_cells[mask].astype(np.uint16)
                     + np.asarray(color, dtype=np.uint16)
                 )
                 // 2
@@ -518,7 +530,8 @@ def _draw_axes(draw: ImageDraw.ImageDraw, image_size: Tuple[int, int]) -> None:
 
 
 def _draw_class_legend(draw: ImageDraw.ImageDraw) -> None:
-    for index, (name, color) in enumerate(zip(MAP_CLASSES, _CLASS_COLORS)):
+    for index, name in enumerate(MAP_VISUAL_PRIORITY):
+        color = _CLASS_COLORS[name]
         y = 8 + index * 12
         draw.rectangle((8, y, 15, y + 7), fill=color)
         draw.text((20, y - 2), name, fill=color)

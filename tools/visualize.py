@@ -146,7 +146,9 @@ def main() -> None:
             masks = masks.astype(np.bool)
         elif args.mode == "pred" and "masks_bev" in outputs[0]:
             masks = outputs[0]["masks_bev"].numpy()
-            masks = scores_to_single_label_masks(masks, args.map_score)
+            masks = scores_to_single_label_masks(
+                masks, args.map_score, classes=cfg.map_classes
+            )
         else:
             masks = None
 

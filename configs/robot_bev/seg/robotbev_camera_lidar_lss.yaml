@@ -1,7 +1,7 @@
 dataset_type: RobotBEVDataset
-dataset_root: data/replica_robot_bev_v3/
+dataset_root: data/replica_robot_bev_v4/
 image_size: [256, 704]
-point_cloud_range: [0.0, -1.52, -0.5, 3.04, 1.52, 2.5]
+point_cloud_range: [0.0, -1.52, -0.5, 3.04, 1.52, 2.0]
 voxel_size: [0.005, 0.005, 0.1]
 
 reduce_beams: null
@@ -13,10 +13,10 @@ object_classes: []
 map_classes:
   - floor
   - carpet
-  - obstacle
   - wall
   - furniture
-  - other
+  - door
+  - clutter
 
 input_modality:
   use_lidar: true
@@ -81,7 +81,7 @@ model:
         feature_size: ${[image_size[0] // 8, image_size[1] // 8]}
         xbound: [0.0, 3.04, 0.02]
         ybound: [-1.52, 1.52, 0.02]
-        zbound: [-0.5, 2.5, 3.0]
+        zbound: [-0.5, 2.0, 2.5]
         dbound: [0.1, 5.0, 0.05]
         downsample: 2
     lidar:
@@ -93,7 +93,7 @@ model:
       backbone:
         type: SparseEncoder
         in_channels: 5
-        sparse_shape: [608, 608, 30]
+        sparse_shape: [608, 608, 25]
         output_channels: 128
         order:
           - conv

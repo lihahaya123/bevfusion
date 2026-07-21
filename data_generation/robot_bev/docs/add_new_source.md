@@ -33,16 +33,19 @@ detection annotations, and sweep records do not belong in this layer.
 
 Define a deterministic source-category policy before rendering:
 
-- map known categories into the fixed order `floor, carpet, obstacle, wall,
-  furniture, other`;
+- map known categories into the fixed order `floor, carpet, wall, furniture,
+  door, clutter`;
 - list categories intentionally ignored because they carry no supervision;
-- map remaining valid but unknown categories to `other`, rather than silently
+- map remaining valid but unknown categories to `clutter`, rather than silently
   discarding them;
 - emit source instance IDs only in supported artifact dtypes;
 - set `class_validity` to zero for any canonical class the source cannot
   supervise;
-- record mapping groups, ignored categories, and other label-affecting settings
-  in the generation fingerprint.
+- keep semantic labels separate from robot affordance labels: traversability,
+  cleanability, robot radius, and cost-map inflation must go into a separate
+  target/head rather than redefining `floor`;
+- record canonical x/y/z label bounds, mapping groups, ignored categories, and
+  other label-affecting settings in the generation fingerprint.
 
 Reject a scene when required semantic metadata is absent or when no usable
 instance mapping is loaded. Do not reinterpret unsupported or unobserved cells

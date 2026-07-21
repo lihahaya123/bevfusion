@@ -7,7 +7,10 @@ import mmcv
 import numpy as np
 from matplotlib import pyplot as plt
 
-from data_generation.robot_bev.schema import MAP_PALETTE as ROBOT_BEV_MAP_PALETTE
+from data_generation.robot_bev.schema import (
+    MAP_PALETTE as ROBOT_BEV_MAP_PALETTE,
+    MAP_VISUAL_PRIORITY as ROBOT_BEV_MAP_VISUAL_PRIORITY,
+)
 from ..bbox import LiDARInstance3DBoxes
 
 __all__ = [
@@ -48,6 +51,23 @@ MAP_PALETTE = {
     "unknown": (20, 20, 20),
 }
 MAP_PALETTE.update(ROBOT_BEV_MAP_PALETTE)
+ROBOT_BEV_VISUAL_RANK = {
+    name: rank for rank, name in enumerate(ROBOT_BEV_MAP_VISUAL_PRIORITY)
+}
+
+
+def _visualization_draw_order(classes: List[str]):
+    indexed = list(enumerate(classes))
+    if not any(name in ROBOT_BEV_VISUAL_RANK for _, name in indexed):
+        return indexed
+    non_robot = [
+        (index, name) for index, name in indexed if name not in ROBOT_BEV_VISUAL_RANK
+    ]
+    robot = [
+        (index, name) for index, name in indexed if name in ROBOT_BEV_VISUAL_RANK
+    ]
+    robot.sort(key=lambda item: ROBOT_BEV_VISUAL_RANK[item[1]], reverse=True)
+    return non_robot + robot
 
 
 def visualize_camera(
@@ -184,7 +204,7 @@ def visualize_map(
     canvas = np.zeros((*masks.shape[-2:], 3), dtype=np.uint8)
     canvas[:] = background
 
-    for k, name in enumerate(classes):
+    for k, name in _visualization_draw_order(classes):
         if name in MAP_PALETTE:
             canvas[masks[k], :] = MAP_PALETTE[name]
     canvas = cv2.cvtColor(canvas, cv2.COLOR_RGB2BGR)
@@ -196,14 +216,15 @@ def visualize_map(
 def scores_to_single_label_masks(
     scores: np.ndarray,
     threshold: float,
+    classes: Optional[List[str]] = None,
 ) -> np.ndarray:
     """Convert per-class map scores to one visible class per BEV cell.
 
     The segmentation head predicts independent sigmoid scores for each class.
-    For visualization, drawing all thresholded channels in class order can make
-    later classes hide earlier ones. This helper keeps only the highest-score
-    class in each BEV cell and leaves the cell as background when that maximum
-    score is below ``threshold``.
+    For RobotBEV visualization, keep only classes whose score is greater than
+    ``threshold`` and then choose the highest display-priority class in each
+    cell. This mirrors GT visualization while preserving ``threshold`` as the
+    confidence gate. For non-RobotBEV classes, the input class order is used.
     """
 
     scores = np.asarray(scores)
@@ -212,9 +233,16 @@ def scores_to_single_label_masks(
     if scores.shape[0] == 0:
         raise ValueError("scores must contain at least one class channel")
 
-    labels = np.argmax(scores, axis=0)
-    max_scores = np.max(scores, axis=0)
-    valid = max_scores >= threshold
+    valid = np.any(scores > threshold, axis=0)
+    labels = np.zeros(scores.shape[-2:], dtype=np.int64)
+    draw_order = (
+        _visualization_draw_order(classes)
+        if classes is not None
+        else list(enumerate(range(scores.shape[0])))
+    )
+    for class_index, _ in draw_order:
+        selected = scores[class_index] > threshold
+        labels[selected] = class_index
 
     masks = np.zeros(scores.shape, dtype=bool)
     rows, cols = np.nonzero(valid)
@@ -230,5 +258,5 @@ def visualize_map_scores(
     threshold: float = 0.5,
     background: Tuple[int, int, int] = (240, 240, 240),
 ) -> None:
-    masks = scores_to_single_label_masks(scores, threshold)
+    masks = scores_to_single_label_masks(scores, threshold, classes=classes)
     visualize_map(fpath, masks, classes=classes, background=background)

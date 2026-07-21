@@ -7,7 +7,7 @@ from mmdet3d.datasets.robot_bev_dataset import RobotBEVDataset
 from tools.data_converter.robot_bev_converter import convert_split
 
 
-MAP_CLASSES = ("floor", "carpet", "obstacle", "wall", "furniture", "other")
+MAP_CLASSES = ("floor", "carpet", "wall", "furniture", "door", "clutter")
 
 
 def _converted_root(canonical_root):
@@ -86,6 +86,6 @@ def test_robot_bev_dataset_metadata_matches_current_infos(canonical_root):
         test_mode=True,
     )
 
-    assert dataset.version == "robot-bev-v3"
+    assert dataset.version == "robot-bev-v4"
     assert tuple(dataset.map_classes) == MAP_CLASSES
     assert len(dataset) == 2

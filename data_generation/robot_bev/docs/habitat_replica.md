@@ -15,7 +15,7 @@ Set portable path variables for the machine running the render:
 
 ```text
 REPLICA_CONFIG=/path/to/replica/replica.scene_dataset_config.json
-OUTPUT_ROOT=/path/to/output/replica_robot_bev_v3
+OUTPUT_ROOT=/path/to/output/replica_robot_bev_v4
 ```
 
 The tracked scene list has all 18 official scenes. The tracked split is 14
@@ -31,10 +31,10 @@ to the requested scene.
 ```bash
 conda activate habitat022
 REPLICA_CONFIG=/path/to/replica/replica.scene_dataset_config.json
-QUICK_ROOT=/path/to/output/replica_robot_bev_v3_quick
+QUICK_ROOT=/path/to/output/replica_robot_bev_v4_quick
 python -m data_generation.robot_bev.cli.generate_replica \
   --dataset "$REPLICA_CONFIG" \
-  --dataset-id replica_robot_bev_v3_quick \
+  --dataset-id replica_robot_bev_v4_quick \
   --scene office_1 \
   --split-file data_generation/robot_bev/configs/replica_splits.example.json \
   --output-dir "$QUICK_ROOT" \
@@ -63,10 +63,10 @@ scene (10 frames).
 ```bash
 conda activate habitat022
 REPLICA_CONFIG=/path/to/replica/replica.scene_dataset_config.json
-OUTPUT_ROOT=/path/to/output/replica_robot_bev_v3
+OUTPUT_ROOT=/path/to/output/replica_robot_bev_v4
 python -m data_generation.robot_bev.cli.generate_replica \
   --dataset "$REPLICA_CONFIG" \
-  --dataset-id replica_robot_bev_v3 \
+  --dataset-id replica_robot_bev_v4 \
   --scenes hotel_0 office_0 office_1 office_2 office_3 office_4 room_0 room_1 room_2 \
   --split-file data_generation/robot_bev/configs/replica_splits.example.json \
   --output-dir "$OUTPUT_ROOT" \
@@ -113,10 +113,10 @@ remote machine; do not overwrite the approved smoke root in place.
 ```bash
 conda activate habitat022
 REPLICA_CONFIG=/path/to/replica/replica.scene_dataset_config.json
-PRODUCTION_ROOT=/path/to/empty/output/replica_robot_bev_v3
+PRODUCTION_ROOT=/path/to/empty/output/replica_robot_bev_v4
 python -m data_generation.robot_bev.cli.generate_replica \
   --dataset "$REPLICA_CONFIG" \
-  --dataset-id replica_robot_bev_v3 \
+  --dataset-id replica_robot_bev_v4 \
   --scenes-file data_generation/robot_bev/configs/replica_scenes.txt \
   --split-file data_generation/robot_bev/configs/replica_splits.example.json \
   --output-dir "$PRODUCTION_ROOT" \
@@ -135,7 +135,8 @@ validation against `PRODUCTION_ROOT` before promotion to training.
 Use `--resume` only after the output root contains complete, atomically
 committed manifest frames from the same command contract. Keep the same dataset
 ID, requested scene order, split contents, frame count, sensor settings,
-navmesh settings, semantic mapping, and Habitat-Sim version. The writer rejects
+trajectory navmesh settings, BEV label source, BEV label bounds, semantic
+mapping, and Habitat-Sim version. The writer rejects
 metadata, split, or generation-fingerprint changes.
 
 Resume deterministically replays committed poses and collision recovery from
@@ -157,7 +158,7 @@ with the validator as shown above.
 
 The source adapter normalizes Replica category names, maps known categories to
 the six fixed schema classes, omits explicitly ignored non-supervision
-categories, and maps remaining nonignored categories to `other`. The complete
+categories, and maps remaining nonignored categories to `clutter`. The complete
 mapping groups and ignored set are included in the generation fingerprint.
 Habitat-Sim 0.2.2 must load the semantic PLY with y-up/-z-forward orientation;
 the adapter overrides the z-up PTex stage defaults for the semantic asset so
@@ -165,3 +166,10 @@ that RGB, depth, and instance IDs remain registered. Rendering is fatal if the
 semantic scene yields zero instance mappings, the front semantic observation
 is empty, semantic coverage over valid depth is below the configured threshold,
 or an instance ID cannot fit `uint16`.
+
+BEV semantic labels are generated from semantic IDs carried by projected depth
+points inside the canonical x/y/z label bounds for every class, including
+`floor` and `carpet`. The navmesh remains part of trajectory sampling/replay,
+but it is not used to fill `floor`, mark obstacles, or inject agent-radius
+traversability into semantic labels. Ceiling and ceiling-mounted fixtures are
+ignored rather than mapped to `clutter`.

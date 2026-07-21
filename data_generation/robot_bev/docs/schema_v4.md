@@ -1,6 +1,6 @@
-# Robot BEV dataset schema v3
+# Robot BEV dataset schema v4
 
-Schema v3 is the stable, framework-independent contract emitted by
+Schema v4 is the stable, framework-independent contract emitted by
 `RobotBEVWriter`. A coordinate convention, class order, tensor shape, required
 field, path interpretation, or unit change requires a new schema version.
 
@@ -43,10 +43,11 @@ in exactly one of `train`, `val`, or `test`.
 | Field | Value |
 | --- | --- |
 | `schema_name` | `robot_bev_dataset` |
-| `schema_version` | `3` |
-| `map_classes` | `floor, carpet, obstacle, wall, furniture, other` |
+| `schema_version` | `4` |
+| `map_classes` | `floor, carpet, wall, furniture, door, clutter` |
 | BEV x bound | `[0.0, 3.0, 0.02]` metres |
 | BEV y bound | `[-1.5, 1.5, 0.02]` metres |
+| BEV label z bound | `[-0.5, 2.0]` metres |
 | BEV label shape | `(6, 150, 150)`, binary `uint8` |
 | observed-mask shape | `(150, 150)`, binary `uint8` |
 | point dtype | `float32` |
@@ -107,6 +108,9 @@ row = floor((x_forward - 0.0) / 0.02)
 col = floor((y_left + 1.5) / 0.02)
 ```
 
+Semantic label points are projected only when they fall inside the canonical
+x/y grid and satisfy `-0.5 < z_up < 2.0`.
+
 The stored array is not an image-coordinate promise; use these formulas for
 training and use the diagnostic overlay to verify display orientation.
 
@@ -118,14 +122,25 @@ history transforms from poses and extrinsics.
 ## Labels and supervision
 
 BEV labels are multi-hot: more than one class channel may be one at a cell. The
-class order never changes within schema v3:
+class order never changes within schema v4:
 
 1. `floor`
 2. `carpet`
-3. `obstacle`
-4. `wall`
-5. `furniture`
-6. `other`
+3. `wall`
+4. `furniture`
+5. `door`
+6. `clutter`
+
+Source adapters should keep semantic labels separate from robot affordance
+labels. For the Replica adapter, all six classes are emitted from semantic
+depth-point projection inside the canonical x/y/z label bounds; navmesh
+traversability, agent radius, cleanability, and cost inflation do not define
+`floor` or any other semantic class. Ceiling and ceiling-mounted fixtures are
+ignored rather than mapped to `clutter`.
+
+Visualizations are allowed to collapse multi-hot cells into one RGB color.
+The canonical RobotBEV display priority is `door > furniture > wall > clutter >
+carpet > floor`; this does not change channel order or training targets.
 
 `bev_observed_mask` identifies cells with sensor evidence. `class_validity`
 identifies classes that the source can supervise. An optional per-class mask

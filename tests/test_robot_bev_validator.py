@@ -14,7 +14,7 @@ from data_generation.robot_bev.writer import FramePayload, RobotBEVWriter
 def build_dataset(root, frame_count=1):
     writer = RobotBEVWriter(
         root=root,
-        dataset_id="fixture_v3",
+        dataset_id="fixture_v4",
         source_type="simulation",
         source_dataset="fixture",
         generator_name="pytest",
@@ -59,7 +59,7 @@ def test_validator_reports_context_for_path_escape(tmp_path):
     with pytest.raises(DatasetValidationError) as caught:
         validate_dataset(tmp_path)
     message = str(caught.value)
-    assert "fixture_v3" in message
+    assert "fixture_v4" in message
     assert "scene_a" in message
     assert "image_path" in message
 
@@ -208,7 +208,7 @@ def test_validator_rejects_scene_directory_symlink_escape(tmp_path):
 
     with pytest.raises(
         DatasetValidationError,
-        match=r"dataset=fixture_v3 scene=scene_a.*field=scene_directory",
+        match=r"dataset=fixture_v4 scene=scene_a.*field=scene_directory",
     ):
         validate_dataset(root)
 
@@ -239,7 +239,7 @@ def test_validator_rejects_local_index_integer_pose_valid(tmp_path, filename):
 
     with pytest.raises(
         DatasetValidationError,
-        match=r"dataset=fixture_v3 scene=scene_a frame=0 field=pose_valid",
+        match=r"dataset=fixture_v4 scene=scene_a frame=0 field=pose_valid",
     ):
         validate_dataset(tmp_path)
 
@@ -256,7 +256,7 @@ def test_validator_reconciles_embedded_scene_summary_fields(tmp_path):
     with pytest.raises(
         DatasetValidationError,
         match=(
-            r"dataset=fixture_v3 scene=scene_a.*"
+            r"dataset=fixture_v4 scene=scene_a.*"
             r"field=multi_scene_summary\.scene_summaries\.frame_count"
         ),
     ):
@@ -285,7 +285,7 @@ def test_validator_reconciles_embedded_scene_summary_aggregates(
     with pytest.raises(
         DatasetValidationError,
         match=(
-            r"dataset=fixture_v3 scene=scene_a.*"
+            r"dataset=fixture_v4 scene=scene_a.*"
             rf"field=multi_scene_summary\.scene_summaries\.{field_name}"
         ),
     ):
@@ -310,7 +310,7 @@ def test_validator_requires_exact_embedded_scene_summary_keys(
     with pytest.raises(
         DatasetValidationError,
         match=(
-            r"dataset=fixture_v3 scene=scene_a.*"
+            r"dataset=fixture_v4 scene=scene_a.*"
             r"field=multi_scene_summary\.scene_summaries\.keys"
         ),
     ):
@@ -330,7 +330,7 @@ def test_validator_rejects_duplicate_embedded_scene_summary(tmp_path):
     with pytest.raises(
         DatasetValidationError,
         match=(
-            r"dataset=fixture_v3 scene=scene_a.*"
+            r"dataset=fixture_v4 scene=scene_a.*"
             r"field=multi_scene_summary\.scene_summaries\.scene_id"
         ),
     ):
@@ -347,7 +347,7 @@ def test_validator_rejects_missing_embedded_scene_summary(tmp_path):
     with pytest.raises(
         DatasetValidationError,
         match=(
-            r"dataset=fixture_v3 scene=scene_a.*"
+            r"dataset=fixture_v4 scene=scene_a.*"
             r"field=multi_scene_summary\.scene_summaries\.scene_id"
         ),
     ):
@@ -367,7 +367,7 @@ def test_validator_rejects_extra_embedded_scene_summary(tmp_path):
     with pytest.raises(
         DatasetValidationError,
         match=(
-            r"dataset=fixture_v3 scene=scene_extra.*"
+            r"dataset=fixture_v4 scene=scene_extra.*"
             r"field=multi_scene_summary\.scene_summaries\.scene_id"
         ),
     ):
@@ -387,7 +387,7 @@ def test_validator_contextualizes_wrong_type_root_index_scene_id(
 
     with pytest.raises(
         DatasetValidationError,
-        match=r"dataset=fixture_v3 .*frame=0 field=scene_id",
+        match=r"dataset=fixture_v4 .*frame=0 field=scene_id",
     ):
         validate_dataset(tmp_path)
 
@@ -404,7 +404,7 @@ def test_validator_contextualizes_wrong_type_root_index_path(tmp_path):
 
     with pytest.raises(
         DatasetValidationError,
-        match=r"dataset=fixture_v3 scene=scene_a frame=0 field=image_path",
+        match=r"dataset=fixture_v4 scene=scene_a frame=0 field=image_path",
     ):
         validate_dataset(tmp_path)
 
@@ -420,7 +420,7 @@ def test_validator_contextualizes_non_string_local_index_key(tmp_path):
     with pytest.raises(
         DatasetValidationError,
         match=(
-            r"dataset=fixture_v3 scene=scene_a frame=0 "
+            r"dataset=fixture_v4 scene=scene_a frame=0 "
             r"field=scene_infos\.pkl\.infos\.keys"
         ),
     ):
@@ -440,7 +440,7 @@ def test_validator_contextualizes_wrong_type_root_index_identity(
 
     with pytest.raises(
         DatasetValidationError,
-        match=rf"dataset=fixture_v3 scene=scene_a frame=0 field={field_name}",
+        match=rf"dataset=fixture_v4 scene=scene_a frame=0 field={field_name}",
     ):
         validate_dataset(tmp_path)
 
@@ -460,6 +460,6 @@ def test_validator_contextualizes_ragged_matrix(tmp_path):
 
     with pytest.raises(
         DatasetValidationError,
-        match=r"dataset=fixture_v3 scene=scene_a frame=0 field=camera2base",
+        match=r"dataset=fixture_v4 scene=scene_a frame=0 field=camera2base",
     ):
         validate_dataset(tmp_path)

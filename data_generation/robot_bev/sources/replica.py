@@ -13,14 +13,13 @@ from typing import Dict, List, Optional, Sequence, Tuple
 
 import numpy as np
 
-from ..schema import BEV_XBOUND, BEV_YBOUND, MAP_CLASSES
+from ..schema import BEV_XBOUND, BEV_YBOUND, BEV_ZBOUND, MAP_CLASSES
 from ..writer import FramePayload, RobotBEVWriter
 from . import habitat_common
 from .habitat_common import (
     DEPTH_UUID,
     RGB_UUID,
     SEMANTIC_UUID,
-    base_grid_to_habitat_local,
     camera_optical_to_base_matrix,
     depth_to_points,
     initialize_agent,
@@ -32,7 +31,6 @@ from .habitat_common import (
     map_from_base_matrix,
     next_action,
     sensor_to_base_matrix,
-    transform_habitat_local_to_world,
     turn_agent_away,
 )
 
@@ -57,19 +55,40 @@ FURNITURE_CATEGORIES = frozenset(
         "wall cabinet",
     }
 )
+DOOR_CATEGORIES = frozenset({"door"})
 SEMANTIC_CATEGORY_GROUPS = {
     "carpet": frozenset({"carpet", "floor mat", "mat", "rug"}),
     "wall": frozenset({"wall"}),
     "floor": frozenset({"floor", "ground"}),
     "furniture": FURNITURE_CATEGORIES,
+    "door": DOOR_CATEGORIES,
 }
 IGNORED_SEMANTIC_CATEGORIES = frozenset(
-    {"", "background", "none", "undefined", "unknown", "void"}
+    {
+        "",
+        "air vent",
+        "background",
+        "ceiling",
+        "ceiling fan",
+        "ceiling lamp",
+        "ceiling light",
+        "chandelier",
+        "light fixture",
+        "none",
+        "recessed light",
+        "smoke detector",
+        "sprinkler",
+        "undefined",
+        "unknown",
+        "vent",
+        "void",
+    }
 )
 FRL_PTEX_ASSET_TYPE = 3
 REQUIRED_HABITAT_VERSION = "0.2.2"
 RESUME_POSE_ATOL = 1e-5
 SIMULATION_TIMESTEP_SECONDS = 1.0 / 60.0
+BEV_LABEL_SOURCE = "semantic_depth_projection"
 # Replica's semantic PLY loader already uses Habitat's canonical y-up,
 # -z-forward asset convention.  In Habitat-Sim 0.2.2, allowing the z-up PTex
 # stage defaults to propagate to the semantic asset rotates the semantic scene
@@ -96,14 +115,6 @@ class ReplicaSceneFiles:
 
 
 @dataclass(frozen=True)
-class NavmeshTopdown:
-    grid: np.ndarray
-    min_x: float
-    min_z: float
-    meters_per_pixel: float
-
-
-@dataclass(frozen=True)
 class TrajectoryState:
     last_collided: bool = False
     last_stair_recovery: bool = False
@@ -125,6 +136,15 @@ def parse_bound(
     if hi <= lo or step <= 0:
         raise ValueError(f"{name} must satisfy max > min and step > 0")
     return float(lo), float(hi), float(step)
+
+
+def parse_zbound(values: Sequence[float], name: str) -> Tuple[float, float]:
+    if len(values) != 2:
+        raise ValueError(f"{name} must have two values: min max")
+    lo, hi = values
+    if hi <= lo:
+        raise ValueError(f"{name} must satisfy max > min")
+    return float(lo), float(hi)
 
 
 def validate_replica_scene(
@@ -301,7 +321,7 @@ def semantic_category_to_map_class(
     for map_class, categories in SEMANTIC_CATEGORY_GROUPS.items():
         if normalized in categories:
             return map_class
-    return "other"
+    return "clutter"
 
 
 def build_semantic_id_to_class(sim) -> Dict[int, str]:
@@ -334,12 +354,22 @@ def point_indices(
     points: np.ndarray,
     xbound: Tuple[float, float, float],
     ybound: Tuple[float, float, float],
+    zbound: Tuple[float, float],
 ) -> Tuple[np.ndarray, np.ndarray]:
     x_min, x_max, x_step = xbound
     y_min, y_max, y_step = ybound
+    z_min, z_max = zbound
     x = points[:, 0]
     y = points[:, 1]
-    valid = (x >= x_min) & (x < x_max) & (y >= y_min) & (y < y_max)
+    z = points[:, 2]
+    valid = (
+        (x >= x_min)
+        & (x < x_max)
+        & (y >= y_min)
+        & (y < y_max)
+        & (z > z_min)
+        & (z < z_max)
+    )
     height = int(round((x_max - x_min) / x_step))
     width = int(round((y_max - y_min) / y_step))
     rows = np.floor((x[valid] - x_min) / x_step).astype(np.int64)
@@ -349,64 +379,22 @@ def point_indices(
     return rows, cols
 
 
-def build_navmesh_topdown(
-    sim, meters_per_pixel: float, height: float
-) -> NavmeshTopdown:
-    habitat_common.require_habitat_sim()
-    bounds = sim.pathfinder.get_bounds()
-    lower = np.asarray(bounds[0], dtype=np.float32)
-    upper = np.asarray(bounds[1], dtype=np.float32)
-    grid = np.asarray(
-        sim.pathfinder.get_topdown_view(meters_per_pixel, float(height)),
-        dtype=np.uint8,
-    )
-    return NavmeshTopdown(
-        grid=grid,
-        min_x=float(min(lower[0], upper[0])),
-        min_z=float(min(lower[2], upper[2])),
-        meters_per_pixel=float(meters_per_pixel),
-    )
-
-
-def sample_navmesh_topdown(
-    cache: NavmeshTopdown, world: np.ndarray
-) -> np.ndarray:
-    world64 = np.asarray(world, dtype=np.float64)
-    x_offset = world64[:, 0] - cache.min_x
-    z_offset = world64[:, 2] - cache.min_z
-    inside = (
-        (z_offset >= 0.0)
-        & (z_offset < cache.grid.shape[0] * cache.meters_per_pixel)
-        & (x_offset >= 0.0)
-        & (x_offset < cache.grid.shape[1] * cache.meters_per_pixel)
-    )
-    values = np.zeros(world.shape[0], dtype=np.uint8)
-    if np.any(inside):
-        rows = np.floor(
-            z_offset[inside] / cache.meters_per_pixel
-        ).astype(np.int64)
-        cols = np.floor(
-            x_offset[inside] / cache.meters_per_pixel
-        ).astype(np.int64)
-        rows = np.clip(rows, 0, cache.grid.shape[0] - 1)
-        cols = np.clip(cols, 0, cache.grid.shape[1] - 1)
-        values[inside] = cache.grid[rows, cols]
-    return values
-
-
 def make_bev_labels(
-    sim,
-    state,
     views: Sequence[Tuple[np.ndarray, Optional[np.ndarray], np.ndarray]],
     semantic_id_to_class: Dict[int, str],
     xbound: Tuple[float, float, float],
     ybound: Tuple[float, float, float],
-    min_obstacle_height: float,
-    max_obstacle_height: float,
+    zbound: Tuple[float, float],
     valid_mask: np.ndarray,
-    navmesh_topdown: Optional[NavmeshTopdown] = None,
 ) -> np.ndarray:
-    habitat_common.require_habitat_sim()
+    """Project semantic depth points into the canonical BEV label grid.
+
+    The semantic labels describe scene categories only.  Robot traversability,
+    navmesh clearance, and agent-radius inflation are intentionally excluded
+    so future planning/cleanability heads can learn those targets separately.
+    Points outside the canonical label height range are also excluded to keep
+    supervision aligned with the 3D point range used by training and inference.
+    """
     x_min, x_max, x_step = xbound
     y_min, y_max, y_step = ybound
     height = int(round((x_max - x_min) / x_step))
@@ -419,42 +407,9 @@ def make_bev_labels(
         )
     mask = np.zeros((len(MAP_CLASSES), height, width), dtype=np.uint8)
 
-    x_centers = x_min + (
-        np.arange(height, dtype=np.float32) + 0.5
-    ) * x_step
-    y_centers = y_min + (
-        np.arange(width, dtype=np.float32) + 0.5
-    ) * y_step
-    y_grid, x_grid = np.meshgrid(y_centers, x_centers)
-    local = base_grid_to_habitat_local(x_grid, y_grid)
-    world = transform_habitat_local_to_world(state, local)
-
-    if navmesh_topdown is not None:
-        floor = sample_navmesh_topdown(navmesh_topdown, world)
-    else:
-        floor = np.zeros((height * width,), dtype=np.uint8)
-        for idx, point in enumerate(world):
-            floor[idx] = (
-                1
-                if sim.pathfinder.is_navigable(point, max_y_delta=0.5)
-                else 0
-            )
-    mask[MAP_CLASSES.index("floor")] = (
-        floor.reshape(height, width).astype(bool)
-        & valid_mask.astype(bool)
-    ).astype(np.uint8)
-
     for points, semantic_ids, _ in views:
         if points.shape[0] == 0:
             continue
-        obstacle_points = points[
-            (points[:, 2] >= min_obstacle_height)
-            & (points[:, 2] <= max_obstacle_height)
-        ]
-        if obstacle_points.shape[0] > 0:
-            rows, cols = point_indices(obstacle_points, xbound, ybound)
-            mask[MAP_CLASSES.index("obstacle"), rows, cols] = 1
-
         if (
             semantic_ids is None
             or not semantic_id_to_class
@@ -463,15 +418,17 @@ def make_bev_labels(
             continue
         for semantic_id in np.unique(semantic_ids):
             map_class = semantic_id_to_class.get(int(semantic_id))
-            if (
-                map_class not in MAP_CLASSES
-                or map_class in {"floor", "obstacle"}
-            ):
+            if map_class not in MAP_CLASSES:
                 continue
             semantic_points = points[semantic_ids == semantic_id]
             if semantic_points.shape[0] == 0:
                 continue
-            rows, cols = point_indices(semantic_points, xbound, ybound)
+            rows, cols = point_indices(
+                semantic_points,
+                xbound,
+                ybound,
+                zbound,
+            )
             mask[MAP_CLASSES.index(map_class), rows, cols] = 1
 
     mask *= valid_mask[None]
@@ -562,6 +519,8 @@ def generation_parameters(args: argparse.Namespace) -> Dict[str, object]:
             "ignored_semantic_categories": sorted(
                 IGNORED_SEMANTIC_CATEGORIES
             ),
+            "fallback_semantic_class": "clutter",
+            "bev_label_source": BEV_LABEL_SOURCE,
             "semantic_orient_up": list(REPLICA_SEMANTIC_ORIENT_UP),
             "semantic_orient_front": list(
                 REPLICA_SEMANTIC_ORIENT_FRONT
@@ -662,10 +621,17 @@ def _validate_args(args: argparse.Namespace) -> None:
         )
     xbound = parse_bound(args.xbound, "xbound")
     ybound = parse_bound(args.ybound, "ybound")
-    if xbound != tuple(BEV_XBOUND) or ybound != tuple(BEV_YBOUND):
+    zbound = parse_zbound(args.zbound, "zbound")
+    if (
+        xbound != tuple(BEV_XBOUND)
+        or ybound != tuple(BEV_YBOUND)
+        or zbound != tuple(BEV_ZBOUND)
+    ):
         raise ValueError(
-            "--xbound and --ybound must match the fixed canonical schema: "
-            f"xbound={BEV_XBOUND}, ybound={BEV_YBOUND}"
+            "--xbound, --ybound, and --zbound must match the fixed "
+            "canonical schema: "
+            f"xbound={BEV_XBOUND}, ybound={BEV_YBOUND}, "
+            f"zbound={BEV_ZBOUND}"
         )
     args.use_physics = bool(
         args.enable_physics and not args.disable_physics
@@ -869,6 +835,7 @@ def generate_scene(
 
     xbound = parse_bound(args.xbound, "xbound")
     ybound = parse_bound(args.ybound, "ybound")
+    zbound = parse_zbound(args.zbound, "zbound")
     existing_manifest = _load_canonical_manifest(writer, args.scene)
     if existing_manifest and not args.resume:
         raise RuntimeError(
@@ -920,12 +887,6 @@ def generate_scene(
                 f"stair_recoveries={trajectory.stair_recoveries}"
             )
 
-        current_state = sim.get_agent(0).get_state()
-        navmesh_topdown = build_navmesh_topdown(
-            sim,
-            min(xbound[2], ybound[2]),
-            float(current_state.position[1]),
-        )
         semantic_id_to_class = build_semantic_id_to_class(sim)
         if not semantic_id_to_class:
             raise RuntimeError(
@@ -1083,16 +1044,12 @@ def generate_scene(
                 trajectory_step += 1
                 continue
             mask = make_bev_labels(
-                sim,
-                state,
                 views,
                 semantic_id_to_class,
                 xbound,
                 ybound,
-                args.min_obstacle_height,
-                args.max_obstacle_height,
+                zbound,
                 valid_mask,
-                navmesh_topdown,
             )
 
             payload = FramePayload(
@@ -1320,10 +1277,14 @@ def make_parser() -> argparse.ArgumentParser:
         "--ybound", type=float, nargs=3, default=[-1.5, 1.5, 0.02]
     )
     parser.add_argument(
-        "--min-obstacle-height", type=float, default=0.035
-    )
-    parser.add_argument(
-        "--max-obstacle-height", type=float, default=1.05
+        "--zbound",
+        type=float,
+        nargs=2,
+        default=[-0.5, 2.0],
+        help=(
+            "Canonical height range for BEV semantic labels. Points outside "
+            "this range are not projected into labels."
+        ),
     )
 
     parser.add_argument("--max-depth", type=float, default=4.0)

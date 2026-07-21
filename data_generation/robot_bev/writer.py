@@ -13,6 +13,7 @@ from .schema import (
     BEV_SHAPE,
     BEV_XBOUND,
     BEV_YBOUND,
+    BEV_ZBOUND,
     MAP_CLASSES,
     OBSERVED_MASK_SHAPE,
     POINT_DIMENSIONS,
@@ -138,6 +139,7 @@ class RobotBEVWriter:
             "bev": {
                 "xbound": list(BEV_XBOUND),
                 "ybound": list(BEV_YBOUND),
+                "zbound": list(BEV_ZBOUND),
                 "shape": list(BEV_SHAPE),
                 "encoding": "uint8_multihot",
                 "observed_mask_shape": list(OBSERVED_MASK_SHAPE),

@@ -1,10 +1,10 @@
 export REPLICA_CONFIG=/data/data3/share_data/replica_v1/replicaCAD/replica.scene_dataset_config.json
-export OUTPUT_ROOT=/data/data3/share_data/replica_v1/replica_robot_bev_v3_repair
+export OUTPUT_ROOT=/data/data3/share_data/replica_v1/replica_robot_bev_v4
 
 # 生成数据
 python -m data_generation.robot_bev.cli.generate_replica \
   --dataset "$REPLICA_CONFIG" \
-  --dataset-id replica_robot_bev_v3 \
+  --dataset-id replica_robot_bev_v4 \
   --scenes-file /data/data3/share_data/lixiaoxiao19/code/bevfusion/data_generation/robot_bev/configs/replica_scenes.txt \
   --split-file /data/data3/share_data/lixiaoxiao19/code/bevfusion/data_generation/robot_bev/configs//replica_splits.example.json \
   --output-dir "$OUTPUT_ROOT" \

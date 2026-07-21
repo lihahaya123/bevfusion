@@ -5,7 +5,11 @@ import pytest
 
 from data_generation.robot_bev.schema import (
     BEV_SHAPE,
+    BEV_XBOUND,
+    BEV_YBOUND,
+    BEV_ZBOUND,
     MAP_CLASSES,
+    MAP_VISUAL_PRIORITY,
     SchemaError,
     canonical_token,
     effective_supervision_mask,
@@ -17,12 +21,23 @@ def test_schema_constants_are_fixed():
     assert MAP_CLASSES == (
         "floor",
         "carpet",
-        "obstacle",
         "wall",
         "furniture",
-        "other",
+        "door",
+        "clutter",
+    )
+    assert MAP_VISUAL_PRIORITY == (
+        "door",
+        "furniture",
+        "wall",
+        "clutter",
+        "carpet",
+        "floor",
     )
     assert BEV_SHAPE == (6, 150, 150)
+    assert BEV_XBOUND == (0.0, 3.0, 0.02)
+    assert BEV_YBOUND == (-1.5, 1.5, 0.02)
+    assert BEV_ZBOUND == (-0.5, 2.0)
 
 
 def test_relative_path_is_portable_and_cannot_escape_root():

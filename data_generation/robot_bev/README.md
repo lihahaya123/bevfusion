@@ -19,7 +19,7 @@ its root-relative `robot_infos_<split>.pkl` files are the source of truth.
 
 | Path | Responsibility |
 | --- | --- |
-| `schema.py` | Schema-v3 constants, path rules, and supervision-mask rules |
+| `schema.py` | Schema-v4 constants, path rules, and supervision-mask rules |
 | `writer.py` | Atomic frame, manifest, index, metadata, and summary output |
 | `validator.py` | Dependency-light structural, numeric, and quality checks |
 | `geometry_checks.py` | Camera projection, BEV orientation, and sweep diagnostics |
@@ -32,7 +32,7 @@ its root-relative `robot_infos_<split>.pkl` files are the source of truth.
 ## Start here
 
 - [Usage guide for rendering and conversion](docs/usage_zh.md)
-- [Schema and coordinates](docs/schema_v3.md)
+- [Schema and coordinates](docs/schema_v4.md)
 - [Replica generation runbook](docs/habitat_replica.md)
 - [Adding a source adapter](docs/add_new_source.md)
 - [Validation and geometry gates](docs/quality_checks.md)

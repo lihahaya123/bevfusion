@@ -6,12 +6,12 @@
 configs/robot_bev/seg/robotbev_camera_lidar_lss.yaml
 ```
 
-它读取 `robot_bev_dataset v3` 转换后的 BEVFusion 索引：
+它读取 `robot_bev_dataset v4` 转换后的 BEVFusion 索引：
 
 ```text
-data/replica_robot_bev_v3/bevfusion_infos_train.pkl
-data/replica_robot_bev_v3/bevfusion_infos_val.pkl
-data/replica_robot_bev_v3/bevfusion_infos_test.pkl
+data/replica_robot_bev_v4/bevfusion_infos_train.pkl
+data/replica_robot_bev_v4/bevfusion_infos_val.pkl
+data/replica_robot_bev_v4/bevfusion_infos_test.pkl
 ```
 
 核心适配点：
@@ -62,7 +62,7 @@ python tools/check_robot_bev_training.py \
 ```bash
 python tools/check_robot_bev_training.py \
   configs/robot_bev/seg/robotbev_camera_lidar_lss.yaml \
-  dataset_root=/mnt/datasets/replica_robot_bev_v3/
+  dataset_root=/mnt/datasets/replica_robot_bev_v4/
 ```
 
 注意末尾 `/` 要保留，因为配置里使用了：
@@ -93,7 +93,7 @@ export PYTHONPATH="$PWD:${PYTHONPATH:-}"
 torchpack dist-run -np 1 python tools/train.py \
   configs/robot_bev/seg/robotbev_camera_lidar_lss.yaml \
   --run-dir work_dirs/robot_bev/replica_18x600 \
-  dataset_root=/mnt/datasets/replica_robot_bev_v3/
+  dataset_root=/mnt/datasets/replica_robot_bev_v4/
 ```
 
 多卡时把 `-np 1` 改成 GPU 数量，例如：
@@ -102,7 +102,7 @@ torchpack dist-run -np 1 python tools/train.py \
 torchpack dist-run -np 4 python tools/train.py \
   configs/robot_bev/seg/robotbev_camera_lidar_lss.yaml \
   --run-dir work_dirs/robot_bev/replica_18x600 \
-  dataset_root=/mnt/datasets/replica_robot_bev_v3/
+  dataset_root=/mnt/datasets/replica_robot_bev_v4/
 ```
 
 ## Checkpoint 保存逻辑
@@ -134,10 +134,11 @@ best_robotbev_map_iou_max_epoch_<N>.pth     # 验证集 robotbev_map_iou_max 最
 ## 当前配置假设
 
 ```text
-BEV 范围: x [0, 3], y [-1.5, 1.5]
+BEV 标签范围: x [0, 3], y [-1.5, 1.5], z [-0.5, 2.0]
 BEV 分辨率: 0.02 m
 BEV label shape: [6, 150, 150]
-类别: floor, carpet, obstacle, wall, furniture, other
+类别: floor, carpet, wall, furniture, door, clutter
+语义标签来源: semantic-depth 点投影，按上述 x/y/z 范围过滤，不混入 navmesh 可通行性
 输入: camera + lidar
 sweeps: 当前帧 + 最多 5 个历史点云
 ```

@@ -24,7 +24,7 @@ def test_converter_preserves_relative_paths_and_builds_sweeps(canonical_root):
     assert second["bev_observed_mask_path"].endswith(
         "bev_observed_masks/000001.npy"
     )
-    assert payload["metadata"]["version"] == "robot-bev-v3"
+    assert payload["metadata"]["version"] == "robot-bev-v4"
 
 
 def test_converter_is_byte_deterministic(canonical_root):

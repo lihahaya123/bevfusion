@@ -75,7 +75,7 @@ def _payload(frame_id: int) -> FramePayload:
 def test_write_geometry_diagnostics_writes_rgb_pngs(tmp_path):
     writer = RobotBEVWriter(
         root=tmp_path,
-        dataset_id="fixture_v3",
+        dataset_id="fixture_v4",
         source_type="simulation",
         source_dataset="fixture",
         generator_name="pytest",

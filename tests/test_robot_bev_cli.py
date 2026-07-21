@@ -65,7 +65,7 @@ SMOKE_SCENES = (
 def _build_dataset(root: Path) -> None:
     writer = RobotBEVWriter(
         root=root,
-        dataset_id="fixture_v3",
+        dataset_id="fixture_v4",
         source_type="simulation",
         source_dataset="fixture",
         generator_name="pytest",
@@ -207,7 +207,7 @@ def test_documented_commands_match_supported_smoke_and_production_contracts():
         path: path.read_text(encoding="utf-8")
         for path in (
             Path("data_generation/robot_bev/README.md"),
-            Path("data_generation/robot_bev/docs/schema_v3.md"),
+            Path("data_generation/robot_bev/docs/schema_v4.md"),
             Path("data_generation/robot_bev/docs/habitat_replica.md"),
             Path("data_generation/robot_bev/docs/add_new_source.md"),
             Path("data_generation/robot_bev/docs/quality_checks.md"),
@@ -238,14 +238,14 @@ def test_documented_commands_match_supported_smoke_and_production_contracts():
 
     assert "--scene office_1" in quick
     assert "--num-frames 10" in quick
-    assert "--dataset-id replica_robot_bev_v3_quick" in quick
+    assert "--dataset-id replica_robot_bev_v4_quick" in quick
 
-    assert "--dataset-id replica_robot_bev_v3" in smoke
+    assert "--dataset-id replica_robot_bev_v4" in smoke
     assert "--num-frames 10" in smoke
     assert "--scenes " in smoke
     assert all(scene in smoke for scene in SMOKE_SCENES)
 
-    assert "--dataset-id replica_robot_bev_v3" in production
+    assert "--dataset-id replica_robot_bev_v4" in production
     assert "--scenes-file data_generation/robot_bev/configs/replica_scenes.txt" in production
     assert "--num-frames 600" in production
 

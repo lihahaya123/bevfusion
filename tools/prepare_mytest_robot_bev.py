@@ -1,4 +1,4 @@
-"""Prepare self-collected mytest data as canonical RobotBEV v3 data.
+"""Prepare self-collected mytest data as canonical RobotBEV v4 data.
 
 The current mytest source only contains RGB images, camera intrinsics and
 camera/depth point clouds.  This script therefore produces an inference-only
@@ -30,6 +30,7 @@ from data_generation.robot_bev.schema import (  # noqa: E402
     BEV_SHAPE,
     BEV_XBOUND,
     BEV_YBOUND,
+    BEV_ZBOUND,
     MAP_CLASSES,
     OBSERVED_MASK_SHAPE,
     POINT_DIMENSIONS,
@@ -44,7 +45,7 @@ from tools.data_converter.robot_bev_converter import convert_split  # noqa: E402
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Convert data/mytest self-collected frames to RobotBEV v3."
+        description="Convert data/mytest self-collected frames to RobotBEV v4."
     )
     parser.add_argument(
         "--src-root",
@@ -58,7 +59,7 @@ def parse_args() -> argparse.Namespace:
         type=Path,
         help="Output RobotBEV dataset root.",
     )
-    parser.add_argument("--dataset-id", default="mytest_robot_bev_v3")
+    parser.add_argument("--dataset-id", default="mytest_robot_bev_v4")
     parser.add_argument("--scene-id", default="mytest")
     parser.add_argument(
         "--split",
@@ -224,6 +225,7 @@ def make_metadata(args: argparse.Namespace, fingerprint: str) -> Dict[str, objec
         "bev": {
             "xbound": list(BEV_XBOUND),
             "ybound": list(BEV_YBOUND),
+            "zbound": list(BEV_ZBOUND),
             "shape": list(BEV_SHAPE),
             "encoding": "uint8_multihot",
             "observed_mask_shape": list(OBSERVED_MASK_SHAPE),

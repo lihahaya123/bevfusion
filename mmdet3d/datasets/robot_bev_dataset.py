@@ -16,15 +16,15 @@ from .custom_3d import Custom3DDataset
 
 @DATASETS.register_module()
 class RobotBEVDataset(Custom3DDataset):
-    """Dataset for canonical Robot BEV v3 converted BEVFusion infos."""
+    """Dataset for canonical Robot BEV converted BEVFusion infos."""
 
     MAP_CLASSES = (
         "floor",
         "carpet",
-        "obstacle",
         "wall",
         "furniture",
-        "other",
+        "door",
+        "clutter",
     )
     CLASSES = ()
 
@@ -71,7 +71,7 @@ class RobotBEVDataset(Custom3DDataset):
     def load_annotations(self, ann_file):
         payload = mmcv.load(ann_file)
         self.metadata = payload["metadata"]
-        self.version = self.metadata.get("version", "robot-bev-v3")
+        self.version = self.metadata.get("version", "robot-bev-v4")
         source_classes = tuple(self.metadata.get("map_classes", ()))
         if source_classes and source_classes != self.map_classes:
             raise ValueError(

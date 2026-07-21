@@ -195,12 +195,13 @@ def convert_split(
         )
         scene_history.append(raw)
     metadata = dict(source["metadata"])
+    source_schema_version = int(metadata.get("schema_version", 4))
     metadata.update(
         {
-            "version": "robot-bev-v3",
+            "version": f"robot-bev-v{source_schema_version}",
             "converter": "robot_bev_converter_v1",
             "source_schema_name": "robot_bev_dataset",
-            "source_schema_version": 3,
+            "source_schema_version": source_schema_version,
         }
     )
     output = root / f"bevfusion_infos_{split}.pkl"
@@ -210,7 +211,7 @@ def convert_split(
 
 def _parse_args(argv: Sequence[str] = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Convert canonical Robot BEV v3 indexes for BEVFusion."
+        description="Convert canonical Robot BEV indexes for BEVFusion."
     )
     parser.add_argument("--root", required=True, type=Path)
     parser.add_argument(

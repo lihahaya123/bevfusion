@@ -9,11 +9,13 @@ import pytest
 
 from data_generation.robot_bev.sources import habitat_common
 from data_generation.robot_bev.sources.replica import (
+    BEV_LABEL_SOURCE,
     MAP_CLASSES,
     REPLICA_SEMANTIC_ORIENT_FRONT,
     REPLICA_SEMANTIC_ORIENT_UP,
     configure_replica_semantic_orientation,
     generation_parameters,
+    make_bev_labels,
     make_parser,
     run_generation,
     semantic_category_to_map_class,
@@ -102,14 +104,74 @@ def test_replica_mapping_uses_canonical_classes():
     assert MAP_CLASSES == (
         "floor",
         "carpet",
-        "obstacle",
         "wall",
         "furniture",
-        "other",
+        "door",
+        "clutter",
     )
     assert semantic_category_to_map_class("table") == "furniture"
+    assert semantic_category_to_map_class("door") == "door"
     assert semantic_category_to_map_class("wall") == "wall"
     assert semantic_category_to_map_class("rug") == "carpet"
+    assert semantic_category_to_map_class("ceiling") is None
+    assert semantic_category_to_map_class("ceiling light") is None
+    assert semantic_category_to_map_class("chandelier") is None
+    assert semantic_category_to_map_class("lamp") == "clutter"
+
+
+def test_bev_labels_use_semantic_projection_for_floor():
+    xbound = (0.0, 1.0, 0.5)
+    ybound = (-0.5, 0.5, 0.5)
+    valid_mask = np.ones((2, 2), dtype=np.uint8)
+    points = np.array(
+        [
+            [0.25, 0.0, 0.0, 0.0, 0.0],
+            [0.75, -0.25, 0.0, 0.0, 0.0],
+        ],
+        dtype=np.float32,
+    )
+    semantic_ids = np.array([10, 20], dtype=np.int64)
+
+    labels = make_bev_labels(
+        [(points, semantic_ids, np.zeros(3, dtype=np.float32))],
+        {10: "floor", 20: "furniture"},
+        xbound,
+        ybound,
+        (-0.5, 2.0),
+        valid_mask,
+    )
+
+    assert labels[MAP_CLASSES.index("floor"), 0, 1] == 1
+    assert labels[MAP_CLASSES.index("furniture"), 1, 0] == 1
+
+
+def test_bev_labels_filter_semantic_points_by_zbound():
+    xbound = (0.0, 1.0, 0.5)
+    ybound = (-0.5, 0.5, 0.5)
+    zbound = (-0.5, 2.0)
+    valid_mask = np.ones((2, 2), dtype=np.uint8)
+    points = np.array(
+        [
+            [0.25, 0.0, 0.0, 0.0, 0.0],
+            [0.25, 0.0, 2.1, 0.0, 0.0],
+            [0.25, 0.0, -0.5, 0.0, 0.0],
+        ],
+        dtype=np.float32,
+    )
+    semantic_ids = np.array([10, 20, 30], dtype=np.int64)
+
+    labels = make_bev_labels(
+        [(points, semantic_ids, np.zeros(3, dtype=np.float32))],
+        {10: "floor", 20: "wall", 30: "door"},
+        xbound,
+        ybound,
+        zbound,
+        valid_mask,
+    )
+
+    assert labels[MAP_CLASSES.index("floor"), 0, 1] == 1
+    assert labels[MAP_CLASSES.index("wall")].sum() == 0
+    assert labels[MAP_CLASSES.index("door")].sum() == 0
 
 
 def test_schema_writer_and_validator_do_not_import_habitat():
@@ -157,7 +219,7 @@ def test_generation_parameters_capture_artifact_contract(
             "--dataset",
             "replica.scene_dataset_config.json",
             "--dataset-id",
-            "replica_robot_bev_v3",
+            "replica_robot_bev_v4",
             "--scenes",
             "office_0",
             "office_1",
@@ -186,11 +248,16 @@ def test_generation_parameters_capture_artifact_contract(
     assert parameters["habitat_sim_version"] == "0.2.2"
     assert parameters["width"] == 640
     assert parameters["xbound"] == [0.0, 3.0, 0.02]
+    assert parameters["zbound"] == [-0.5, 2.0]
     assert parameters["semantic_sensor"] is True
     assert parameters["semantic_orient_up"] == [0.0, 1.0, 0.0]
     assert parameters["semantic_orient_front"] == [0.0, 0.0, -1.0]
     assert "table" in parameters["semantic_category_groups"]["furniture"]
+    assert parameters["semantic_category_groups"]["door"] == ["door"]
+    assert parameters["fallback_semantic_class"] == "clutter"
+    assert parameters["bev_label_source"] == BEV_LABEL_SOURCE
     assert "unknown" in parameters["ignored_semantic_categories"]
+    assert "ceiling light" in parameters["ignored_semantic_categories"]
     for excluded in (
         "output_dir",
         "resume",
@@ -310,7 +377,7 @@ def test_run_generation_uses_one_root_writer_for_all_scenes(
             "--dataset",
             "replica.scene_dataset_config.json",
             "--dataset-id",
-            "replica_robot_bev_v3",
+            "replica_robot_bev_v4",
             "--scenes",
             "office_0",
             "office_1",
@@ -579,7 +646,7 @@ def test_deprecated_visualization_options_are_rejected(option, monkeypatch):
             "--dataset",
             "replica.scene_dataset_config.json",
             "--dataset-id",
-            "replica_robot_bev_v3",
+            "replica_robot_bev_v4",
             option,
         ]
     )

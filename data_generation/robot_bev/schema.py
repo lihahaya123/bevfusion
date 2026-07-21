@@ -4,25 +4,34 @@ from typing import Optional, Sequence, Tuple, Union
 import numpy as np
 
 SCHEMA_NAME = "robot_bev_dataset"
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 MAP_CLASSES: Tuple[str, ...] = (
     "floor",
     "carpet",
-    "obstacle",
     "wall",
     "furniture",
-    "other",
+    "door",
+    "clutter",
 )
 MAP_PALETTE = {
-    "floor": (160, 160, 160),
-    "carpet": (70, 130, 180),
-    "obstacle": (220, 50, 47),
-    "wall": (90, 90, 90),
-    "furniture": (255, 170, 0),
-    "other": (150, 80, 200),
+    "floor": (0, 180, 216),
+    "carpet": (0, 78, 255),
+    "wall": (255, 238, 0),
+    "furniture": (255, 95, 31),
+    "door": (0, 200, 83),
+    "clutter": (186, 85, 211),
 }
+MAP_VISUAL_PRIORITY: Tuple[str, ...] = (
+    "door",
+    "furniture",
+    "wall",
+    "clutter",
+    "carpet",
+    "floor",
+)
 BEV_XBOUND = (0.0, 3.0, 0.02)
 BEV_YBOUND = (-1.5, 1.5, 0.02)
+BEV_ZBOUND = (-0.5, 2.0)
 BEV_SHAPE = (6, 150, 150)
 OBSERVED_MASK_SHAPE = (150, 150)
 POINT_DIMENSIONS = ("x", "y", "z", "intensity", "time")

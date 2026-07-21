@@ -1,8 +1,8 @@
 dataset_type: RobotBEVDataset
-dataset_root: data/replica_robot_bev_v3/
+dataset_root: data/replica_robot_bev_v4/
 
 image_size: [256, 704]
-point_cloud_range: [0.0, -1.52, -0.5, 3.04, 1.52, 2.5]
+point_cloud_range: [0.0, -1.52, -0.5, 3.04, 1.52, 2.0]
 voxel_size: [0.005, 0.005, 0.1]
 
 gt_paste_stop_epoch: -1
@@ -15,10 +15,10 @@ object_classes: []
 map_classes:
   - floor
   - carpet
-  - obstacle
   - wall
   - furniture
-  - other
+  - door
+  - clutter
 
 input_modality:
   use_lidar: true

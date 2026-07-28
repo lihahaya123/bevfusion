@@ -9,7 +9,11 @@ from mmcv.runner import (
     build_optimizer,
     build_runner,
 )
-from mmdet3d.runner import BaselineMetricsHook, CustomEpochBasedRunner
+from mmdet3d.runner import (
+    BaselineMetricsHook,
+    CustomEpochBasedRunner,
+    EarlyStoppingHook,
+)
 
 from mmdet3d.utils import get_root_logger
 from mmdet.core import DistEvalHook
@@ -118,6 +122,27 @@ def train_model(
         eval_cfg["by_epoch"] = cfg.runner["type"] != "IterBasedRunner"
         eval_hook = DistEvalHook
         runner.register_hook(eval_hook(val_dataloader, **eval_cfg))
+
+    early_stopping_cfg = cfg.get("early_stopping", {})
+    if early_stopping_cfg.get("enabled", False):
+        if not validate:
+            logger.warning("Early stopping is disabled because validation is off")
+        else:
+            runner.register_hook(
+                EarlyStoppingHook(
+                    monitor=early_stopping_cfg.get(
+                        "monitor", "robotbev_map_iou_max"
+                    ),
+                    patience=early_stopping_cfg.get("patience", 5),
+                    min_delta=early_stopping_cfg.get("min_delta", 0.0),
+                    rule=early_stopping_cfg.get("rule", "greater"),
+                    start_epoch=early_stopping_cfg.get("start_epoch", 1),
+                    state_file=early_stopping_cfg.get(
+                        "state_file", "early_stopping_state.json"
+                    ),
+                ),
+                priority=75,
+            )
 
     baseline_cfg = cfg.get("baseline_metrics", {})
     if baseline_cfg.get("enabled", False):

@@ -399,6 +399,15 @@ baseline_metrics:
   train_output: baseline_train_metrics.jsonl
   inference_warmup_batches: 5
 
+early_stopping:
+  enabled: true
+  monitor: robotbev_map_iou_max
+  rule: greater
+  patience: 6
+  min_delta: 0.0001
+  start_epoch: 12
+  state_file: early_stopping_state.json
+
 load_from: checkpoint/bevfusion-seg.pth
 load_from_ignore_shape_mismatch: true
 load_from_skip_prefixes:

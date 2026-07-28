@@ -137,6 +137,33 @@ torchpack dist-run -np 1 python tools/test.py \
 分辨率为 2 cm，因此边界容差对应 2 cm。模型延迟统计会排除配置指定的前
 5 个 warmup batch，端到端吞吐仍覆盖完整测试流程。
 
+## 早停
+
+当前训练配置默认启用验证集早停：
+
+```yaml
+early_stopping:
+  enabled: true
+  monitor: robotbev_map_iou_max
+  rule: greater
+  patience: 5
+  min_delta: 0.0001
+  start_epoch: 1
+  state_file: early_stopping_state.json
+```
+
+每个 epoch 验证后检查 `robotbev_map_iou_max`。指标提升超过 `0.0001` 时更新
+best 并清零计数；连续 5 次验证没有达到该提升幅度时结束训练。监控指标与
+`evaluation.save_best` 相同，因此早停判断和 best checkpoint 选择保持一致。
+
+状态保存在 `--run-dir/early_stopping_state.json`，记录最佳分数、最佳
+epoch、连续未提升次数和停止 epoch。同一个 `--run-dir` 使用
+`resume_from=...` 恢复时会继续原有计数。临时关闭早停可在训练命令末尾添加：
+
+```bash
+early_stopping.enabled=false
+```
+
 ## Checkpoint 保存逻辑
 
 当前配置：

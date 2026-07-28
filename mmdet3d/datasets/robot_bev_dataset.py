@@ -6,6 +6,7 @@ from typing import Any, Dict, Mapping, Optional, Sequence
 import mmcv
 import numpy as np
 import torch
+import torch.nn.functional as F
 from pyquaternion import Quaternion
 
 from mmdet.datasets import DATASETS
@@ -173,16 +174,23 @@ class RobotBEVDataset(Custom3DDataset):
         fp = torch.zeros(num_classes, num_thresholds)
         fn = torch.zeros(num_classes, num_thresholds)
         valid_pixels = torch.zeros(num_classes)
+        boundary_pred = torch.zeros(num_classes)
+        boundary_gt = torch.zeros(num_classes)
+        boundary_pred_matched = torch.zeros(num_classes)
+        boundary_gt_matched = torch.zeros(num_classes)
 
         for result in results:
-            pred = result["masks_bev"].detach().reshape(num_classes, -1)
-            label = result["gt_masks_bev"].detach().bool().reshape(num_classes, -1)
+            pred_map = result["masks_bev"].detach()
+            label_map = result["gt_masks_bev"].detach().bool()
             mask = result.get("gt_supervision_mask_bev")
             if mask is None:
-                mask = torch.ones_like(label, dtype=torch.bool)
+                mask_map = torch.ones_like(label_map, dtype=torch.bool)
             else:
-                mask = mask.detach().bool().reshape(num_classes, -1)
+                mask_map = mask.detach().bool()
 
+            pred = pred_map.reshape(num_classes, -1)
+            label = label_map.reshape(num_classes, -1)
+            mask = mask_map.reshape(num_classes, -1)
             pred = pred[:, :, None] >= thresholds.to(pred.device)
             label = label[:, :, None]
             mask_t = mask[:, :, None]
@@ -191,27 +199,122 @@ class RobotBEVDataset(Custom3DDataset):
             fp += ((pred & ~label) & mask_t).sum(dim=1).cpu()
             fn += ((~pred & label) & mask_t).sum(dim=1).cpu()
 
+            boundary_counts = self._boundary_counts(
+                pred_map >= 0.5,
+                label_map,
+                mask_map,
+                tolerance=1,
+            )
+            boundary_pred += boundary_counts["pred"]
+            boundary_gt += boundary_counts["gt"]
+            boundary_pred_matched += boundary_counts["pred_matched"]
+            boundary_gt_matched += boundary_counts["gt_matched"]
+
         ious = tp / (tp + fp + fn + 1e-7)
+        precision_50 = tp[:, 3] / (tp[:, 3] + fp[:, 3] + 1e-7)
+        recall_50 = tp[:, 3] / (tp[:, 3] + fn[:, 3] + 1e-7)
+        f1_50 = (
+            2
+            * precision_50
+            * recall_50
+            / (precision_50 + recall_50 + 1e-7)
+        )
+        boundary_precision = boundary_pred_matched / (boundary_pred + 1e-7)
+        boundary_recall = boundary_gt_matched / (boundary_gt + 1e-7)
+        boundary_f1 = (
+            2
+            * boundary_precision
+            * boundary_recall
+            / (boundary_precision + boundary_recall + 1e-7)
+        )
         metrics = {}
         valid_classes = valid_pixels > 0
         for index, name in enumerate(self.map_classes):
             metrics[f"map/{name}/valid_pixels"] = valid_pixels[index].item()
             metrics[f"map/{name}/iou@max"] = ious[index].max().item()
+            metrics[f"map/{name}/precision@0.50"] = precision_50[index].item()
+            metrics[f"map/{name}/recall@0.50"] = recall_50[index].item()
+            metrics[f"map/{name}/f1@0.50"] = f1_50[index].item()
+            metrics[f"map/{name}/boundary_precision@0.50"] = (
+                boundary_precision[index].item()
+            )
+            metrics[f"map/{name}/boundary_recall@0.50"] = (
+                boundary_recall[index].item()
+            )
+            metrics[f"map/{name}/boundary_f1@0.50"] = boundary_f1[index].item()
+            metrics[f"map/{name}/boundary_gt_pixels"] = boundary_gt[index].item()
             for threshold, iou in zip(thresholds, ious[index]):
                 metrics[f"map/{name}/iou@{threshold.item():.2f}"] = iou.item()
         if valid_classes.any():
             mean_iou_50 = ious[valid_classes, 3].mean().item()
             mean_iou_max = ious[valid_classes].max(dim=1).values.mean().item()
+            mean_precision_50 = precision_50[valid_classes].mean().item()
+            mean_recall_50 = recall_50[valid_classes].mean().item()
+            mean_f1_50 = f1_50[valid_classes].mean().item()
         else:
             mean_iou_50 = 0.0
             mean_iou_max = 0.0
+            mean_precision_50 = 0.0
+            mean_recall_50 = 0.0
+            mean_f1_50 = 0.0
+        boundary_valid_classes = boundary_gt > 0
+        if boundary_valid_classes.any():
+            mean_boundary_f1 = boundary_f1[boundary_valid_classes].mean().item()
+        else:
+            mean_boundary_f1 = 0.0
         metrics["map/mean/iou@0.50"] = mean_iou_50
         metrics["map/mean/iou@max"] = mean_iou_max
+        metrics["map/mean/precision@0.50"] = mean_precision_50
+        metrics["map/mean/recall@0.50"] = mean_recall_50
+        metrics["map/mean/f1@0.50"] = mean_f1_50
+        metrics["map/mean/boundary_f1@0.50"] = mean_boundary_f1
         # MMCV EvalHook uses the save_best metric name in checkpoint filenames.
         # Keep slash-free aliases so best checkpoint paths are safe on disk.
         metrics["robotbev_map_iou_50"] = mean_iou_50
         metrics["robotbev_map_iou_max"] = mean_iou_max
+        metrics["robotbev_map_f1_50"] = mean_f1_50
+        metrics["robotbev_boundary_f1_50"] = mean_boundary_f1
         return metrics
+
+    @staticmethod
+    def _boundary_counts(prediction, target, supervision, tolerance=1):
+        prediction = prediction.bool()
+        target = target.bool()
+        supervision = supervision.bool()
+
+        def erode(mask, radius):
+            kernel = radius * 2 + 1
+            inverted = (~mask).float().unsqueeze(0)
+            dilated_inverted = F.max_pool2d(
+                inverted, kernel_size=kernel, stride=1, padding=radius
+            )
+            return ~(dilated_inverted.squeeze(0).bool())
+
+        def boundary(mask):
+            return mask & ~erode(mask, 1)
+
+        def dilate(mask, radius):
+            kernel = radius * 2 + 1
+            return F.max_pool2d(
+                mask.float().unsqueeze(0),
+                kernel_size=kernel,
+                stride=1,
+                padding=radius,
+            ).squeeze(0).bool()
+
+        valid_core = erode(supervision, tolerance)
+        pred_boundary = boundary(prediction) & valid_core
+        gt_boundary = boundary(target) & valid_core
+        pred_matched = pred_boundary & dilate(gt_boundary, tolerance)
+        gt_matched = gt_boundary & dilate(pred_boundary, tolerance)
+        return {
+            "pred": pred_boundary.reshape(prediction.shape[0], -1).sum(1).cpu(),
+            "gt": gt_boundary.reshape(prediction.shape[0], -1).sum(1).cpu(),
+            "pred_matched": pred_matched.reshape(prediction.shape[0], -1)
+            .sum(1)
+            .cpu(),
+            "gt_matched": gt_matched.reshape(prediction.shape[0], -1).sum(1).cpu(),
+        }
 
     def evaluate(self, results, **kwargs):
         if not results:

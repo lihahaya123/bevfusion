@@ -27,6 +27,14 @@ from mmdet.apis import multi_gpu_test, set_random_seed
 from mmdet.datasets import replace_ImageToTensor
 from mmdet3d.core.utils import visualize_map, visualize_map_scores
 from mmdet3d.utils import recursive_eval
+from mmdet3d.utils.baseline_metrics import (
+    InferenceLatencyRecorder,
+    cuda_memory,
+    model_statistics,
+    process_memory,
+    runtime_environment,
+    write_json,
+)
 
 
 def is_robotbev_dataset(dataset) -> bool:
@@ -48,9 +56,9 @@ def safe_visualization_name(value) -> str:
     return name or "unnamed"
 
 
-def default_metrics_out_path(args) -> str:
+def default_metrics_out_path(args, timestamp=None) -> str:
     checkpoint_name = safe_visualization_name(Path(args.checkpoint).stem)
-    timestamp = time.strftime("%Y%m%d_%H%M%S", time.localtime())
+    timestamp = timestamp or time.strftime("%Y%m%d_%H%M%S", time.localtime())
     filename = f"metrics_{checkpoint_name}_{timestamp}.json"
     if args.show_dir:
         base_dir = Path(args.show_dir).expanduser().parent
@@ -59,6 +67,30 @@ def default_metrics_out_path(args) -> str:
     else:
         base_dir = Path(args.checkpoint).expanduser().parent
     return str(base_dir / filename)
+
+
+def default_baseline_out_path(args, timestamp) -> str:
+    checkpoint_name = safe_visualization_name(Path(args.checkpoint).stem)
+    filename = f"baseline_test_{checkpoint_name}_{timestamp}.json"
+    if args.show_dir:
+        base_dir = Path(args.show_dir).expanduser().parent
+    elif args.out:
+        base_dir = Path(args.out).expanduser().parent
+    else:
+        base_dir = Path(args.checkpoint).expanduser().parent
+    return str(base_dir / filename)
+
+
+def distributed_max(value):
+    if not (torch.distributed.is_available() and torch.distributed.is_initialized()):
+        return float(value)
+    tensor = torch.tensor(
+        float(value),
+        dtype=torch.float64,
+        device=torch.device("cuda", torch.cuda.current_device()),
+    )
+    torch.distributed.all_reduce(tensor, op=torch.distributed.ReduceOp.MAX)
+    return tensor.item()
 
 
 def save_robotbev_visualizations(dataset, outputs, out_dir, map_score=0.5) -> None:
@@ -127,6 +159,10 @@ def parse_args():
     parser.add_argument(
         "--metrics-out",
         help="path to save evaluation metrics, e.g. results/metrics.json",
+    )
+    parser.add_argument(
+        "--baseline-metrics-out",
+        help="path to save accuracy, latency, memory and model baseline metrics",
     )
     parser.add_argument(
         "--map-score",
@@ -202,6 +238,7 @@ def parse_args():
 def main():
     args = parse_args()
     dist.init()
+    run_timestamp = time.strftime("%Y%m%d_%H%M%S", time.localtime())
 
     torch.backends.cudnn.benchmark = True
     torch.cuda.set_device(dist.local_rank())
@@ -231,6 +268,8 @@ def main():
 
     if args.cfg_options is not None:
         cfg.merge_from_dict(args.cfg_options)
+    baseline_cfg = cfg.get("baseline_metrics", {})
+    baseline_enabled = baseline_cfg.get("enabled", False)
     # set cudnn_benchmark
     if cfg.get("cudnn_benchmark", False):
         torch.backends.cudnn.benchmark = True
@@ -287,19 +326,50 @@ def main():
     else:
         model.CLASSES = dataset.CLASSES
 
-    if not distributed:
-        model = MMDataParallel(model, device_ids=[0])
-        outputs = single_gpu_test(model, data_loader)
-    else:
+    if distributed:
         model = MMDistributedDataParallel(
             model.cuda(),
             device_ids=[torch.cuda.current_device()],
             broadcast_buffers=False,
         )
-        outputs = multi_gpu_test(model, data_loader, args.tmpdir, args.gpu_collect)
+    else:
+        model = MMDataParallel(model, device_ids=[0])
 
-    rank, _ = get_dist_info()
+    latency_recorder = None
+    if baseline_enabled:
+        latency_recorder = InferenceLatencyRecorder(
+            model,
+            warmup=baseline_cfg.get("inference_warmup_batches", 5),
+        ).start()
+        torch.cuda.synchronize()
+        torch.cuda.reset_peak_memory_stats()
+        if torch.distributed.is_available() and torch.distributed.is_initialized():
+            torch.distributed.barrier()
+        inference_started_at = time.perf_counter()
+
+    if distributed:
+        outputs = multi_gpu_test(model, data_loader, args.tmpdir, args.gpu_collect)
+    else:
+        outputs = single_gpu_test(model, data_loader)
+
+    if baseline_enabled:
+        torch.cuda.synchronize()
+        if torch.distributed.is_available() and torch.distributed.is_initialized():
+            torch.distributed.barrier()
+        inference_seconds = distributed_max(time.perf_counter() - inference_started_at)
+        latency_recorder.stop()
+        latency = latency_recorder.summary()
+        test_cuda_memory = cuda_memory()
+        test_cuda_memory["peak_allocated_mb_max"] = distributed_max(
+            test_cuda_memory.get("peak_allocated_mb", 0.0)
+        )
+        test_cuda_memory["peak_reserved_mb_max"] = distributed_max(
+            test_cuda_memory.get("peak_reserved_mb", 0.0)
+        )
+
+    rank, world_size = get_dist_info()
     if rank == 0:
+        metrics = {}
         if args.out:
             print(f"\nwriting results to {args.out}")
             mmcv.dump(outputs, args.out)
@@ -329,12 +399,58 @@ def main():
                 eval_kwargs.update(dict(metric=args.eval, **kwargs))
             metrics = dataset.evaluate(outputs, **eval_kwargs)
             print(metrics)
-            metrics_out = args.metrics_out or default_metrics_out_path(args)
+            metrics_out = args.metrics_out or default_metrics_out_path(
+                args, run_timestamp
+            )
             metrics_dir = os.path.dirname(metrics_out)
             if metrics_dir:
                 mmcv.mkdir_or_exist(metrics_dir)
             print(f"\nwriting metrics to {metrics_out}")
             mmcv.dump(metrics, metrics_out)
+        if baseline_enabled:
+            sample_count = len(dataset)
+            checkpoint_bytes = os.path.getsize(args.checkpoint)
+            baseline = {
+                "schema_version": 1,
+                "phase": "test",
+                "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
+                "config": os.path.abspath(args.config),
+                "checkpoint": {
+                    "path": os.path.abspath(args.checkpoint),
+                    "size_mb": checkpoint_bytes / (1024 * 1024),
+                },
+                "dataset_samples": sample_count,
+                "world_size": world_size,
+                "model": model_statistics(model),
+                "environment": runtime_environment(),
+                "performance": {
+                    "batch_size_per_gpu": samples_per_gpu,
+                    "end_to_end_seconds": inference_seconds,
+                    "end_to_end_ms_per_sample": (
+                        inference_seconds * 1000 / max(sample_count, 1)
+                    ),
+                    "end_to_end_samples_per_second": (
+                        sample_count / max(inference_seconds, 1e-12)
+                    ),
+                    "model_latency": latency,
+                },
+                "memory": {
+                    "process": process_memory(),
+                    "cuda": test_cuda_memory,
+                },
+                "accuracy": metrics,
+            }
+            baseline_out = args.baseline_metrics_out or default_baseline_out_path(
+                args, run_timestamp
+            )
+            write_json(baseline_out, baseline)
+            print(
+                "\nBaseline: "
+                f"{baseline['performance']['end_to_end_samples_per_second']:.3f} "
+                "samples/s, "
+                f"{test_cuda_memory['peak_allocated_mb_max']:.1f} MB peak CUDA"
+            )
+            print(f"writing baseline metrics to {baseline_out}")
 
 
 if __name__ == "__main__":

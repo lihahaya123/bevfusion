@@ -105,6 +105,38 @@ torchpack dist-run -np 4 python tools/train.py \
   dataset_root=/mnt/datasets/replica_robot_bev_v4/
 ```
 
+## 基线指标记录
+
+当前配置默认启用：
+
+```yaml
+baseline_metrics:
+  enabled: true
+  train_output: baseline_train_metrics.jsonl
+  inference_warmup_batches: 5
+```
+
+训练时会在 `--run-dir` 下追加写入
+`baseline_train_metrics.jsonl`。文件包含运行环境和模型规模，以及每个 epoch
+的平均 loss、验证集指标、训练吞吐、训练耗时、进程内存和训练峰值显存。
+
+测试时会在 checkpoint 所在目录生成
+`baseline_test_<checkpoint>_<timestamp>.json`。也可以显式指定路径：
+
+```bash
+torchpack dist-run -np 1 python tools/test.py \
+  configs/robot_bev/seg/robotbev_camera_lidar_lss.yaml \
+  work_dirs/robot_bev/camera_lidar_lss/latest.pth \
+  --eval map \
+  --baseline-metrics-out work_dirs/robot_bev/camera_lidar_lss/baseline_test.json
+```
+
+测试基线文件包含固定阈值 `0.50` 下的 IoU、Precision、Recall、F1，以及
+允许 1 个 BEV 像素误差的 Boundary F1；还包含参数量、checkpoint 大小、
+端到端吞吐、模型延迟 P50/P95/P99、进程内存和峰值显存。当前 BEV
+分辨率为 2 cm，因此边界容差对应 2 cm。模型延迟统计会排除配置指定的前
+5 个 warmup batch，端到端吞吐仍覆盖完整测试流程。
+
 ## Checkpoint 保存逻辑
 
 当前配置：

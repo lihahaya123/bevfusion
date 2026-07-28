@@ -9,7 +9,7 @@ from mmcv.runner import (
     build_optimizer,
     build_runner,
 )
-from mmdet3d.runner import CustomEpochBasedRunner
+from mmdet3d.runner import BaselineMetricsHook, CustomEpochBasedRunner
 
 from mmdet3d.utils import get_root_logger
 from mmdet.core import DistEvalHook
@@ -118,6 +118,17 @@ def train_model(
         eval_cfg["by_epoch"] = cfg.runner["type"] != "IterBasedRunner"
         eval_hook = DistEvalHook
         runner.register_hook(eval_hook(val_dataloader, **eval_cfg))
+
+    baseline_cfg = cfg.get("baseline_metrics", {})
+    if baseline_cfg.get("enabled", False):
+        runner.register_hook(
+            BaselineMetricsHook(
+                output_file=baseline_cfg.get(
+                    "train_output", "baseline_train_metrics.jsonl"
+                )
+            ),
+            priority=80,
+        )
 
     if cfg.resume_from:
         runner.resume(cfg.resume_from)

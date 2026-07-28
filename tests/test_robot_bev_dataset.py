@@ -1,6 +1,8 @@
 import pickle
 
 import numpy as np
+import pytest
+import torch
 
 from mmdet3d.datasets.pipelines.loading import LoadRobotBEVSegmentation
 from mmdet3d.datasets.robot_bev_dataset import RobotBEVDataset
@@ -89,3 +91,31 @@ def test_robot_bev_dataset_metadata_matches_current_infos(canonical_root):
     assert dataset.version == "robot-bev-v4"
     assert tuple(dataset.map_classes) == MAP_CLASSES
     assert len(dataset) == 2
+
+
+def test_robot_bev_map_metrics_include_fixed_threshold_and_boundary_scores():
+    dataset = object.__new__(RobotBEVDataset)
+    dataset.map_classes = MAP_CLASSES
+    target = torch.zeros((len(MAP_CLASSES), 12, 12), dtype=torch.float32)
+    target[:, 3:9, 3:9] = 1
+    prediction = target * 0.8 + (1 - target) * 0.2
+    supervision = torch.ones_like(target)
+
+    # Incorrect predictions outside the supervision mask must not affect metrics.
+    supervision[:, :2, :2] = 0
+    prediction[:, :2, :2] = 0.9
+    metrics = dataset.evaluate_map(
+        [
+            {
+                "masks_bev": prediction,
+                "gt_masks_bev": target,
+                "gt_supervision_mask_bev": supervision,
+            }
+        ]
+    )
+
+    assert metrics["robotbev_map_iou_50"] == pytest.approx(1.0)
+    assert metrics["robotbev_map_f1_50"] == pytest.approx(1.0)
+    assert metrics["robotbev_boundary_f1_50"] == pytest.approx(1.0)
+    assert metrics["map/wall/precision@0.50"] == pytest.approx(1.0)
+    assert metrics["map/wall/recall@0.50"] == pytest.approx(1.0)

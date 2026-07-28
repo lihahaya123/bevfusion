@@ -163,12 +163,6 @@ def _convert_frame(
             raw, "bev_supervision_mask_path"
         ),
         "class_validity": np.asarray(raw["class_validity"], dtype=np.uint8).copy(),
-        "gt_boxes": np.empty((0, 7), dtype=np.float32),
-        "gt_names": np.empty((0,), dtype="<U1"),
-        "gt_velocity": np.empty((0, 2), dtype=np.float32),
-        "num_lidar_pts": np.empty((0,), dtype=np.int64),
-        "num_radar_pts": np.empty((0,), dtype=np.int64),
-        "valid_flag": np.empty((0,), dtype=bool),
     }
     for key in ("depth_path", "semantic_path"):
         value = _relative_optional_path(raw, key)

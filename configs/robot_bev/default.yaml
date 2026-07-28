@@ -11,7 +11,6 @@ load_dim: 5
 use_dim: 5
 load_augmented: null
 
-object_classes: []
 map_classes:
   - floor
   - carpet

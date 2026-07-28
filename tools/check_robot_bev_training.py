@@ -110,8 +110,6 @@ def main():
         "points",
         "gt_masks_bev",
         "gt_supervision_mask_bev",
-        "gt_bboxes_3d",
-        "gt_labels_3d",
     ):
         if key in batch:
             print(f"[dataloader] {key}: {describe_value(batch[key])}")

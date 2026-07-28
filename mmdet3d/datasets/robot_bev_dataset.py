@@ -11,7 +11,6 @@ from pyquaternion import Quaternion
 
 from mmdet.datasets import DATASETS
 
-from ..core.bbox import LiDARInstance3DBoxes
 from .custom_3d import Custom3DDataset
 
 
@@ -34,27 +33,22 @@ class RobotBEVDataset(Custom3DDataset):
         ann_file,
         pipeline=None,
         dataset_root=None,
-        object_classes=None,
         map_classes=None,
         load_interval=1,
         modality=None,
         box_type_3d="LiDAR",
         filter_empty_gt=False,
         test_mode=False,
-        use_valid_flag=False,
-        with_velocity=False,
     ) -> None:
         if dataset_root is None:
             dataset_root = osp.dirname(osp.abspath(ann_file))
         self.load_interval = load_interval
         self.map_classes = tuple(map_classes or self.MAP_CLASSES)
-        self.use_valid_flag = use_valid_flag
-        self.with_velocity = with_velocity
         super().__init__(
             dataset_root=dataset_root,
             ann_file=ann_file,
             pipeline=pipeline,
-            classes=object_classes or [],
+            classes=None,
             modality=modality,
             box_type_3d=box_type_3d,
             filter_empty_gt=filter_empty_gt,
@@ -117,54 +111,7 @@ class RobotBEVDataset(Custom3DDataset):
         if self.modality is not None and self.modality.get("use_camera", False):
             self._fill_camera_fields(data, info["cams"])
 
-        data["ann_info"] = self.get_ann_info(index)
         return data
-
-    def get_ann_info(self, index):
-        info = self.data_infos[index]
-        if self.use_valid_flag and "valid_flag" in info:
-            mask = np.asarray(info["valid_flag"], dtype=bool)
-        else:
-            mask = np.asarray(info.get("num_lidar_pts", [])) > 0
-
-        gt_bboxes_3d = np.asarray(
-            info.get("gt_boxes", np.zeros((0, 7))),
-            dtype=np.float32,
-        )
-        gt_names_3d = np.asarray(info.get("gt_names", []))
-        if mask.size:
-            gt_bboxes_3d = gt_bboxes_3d[mask]
-            gt_names_3d = gt_names_3d[mask]
-        gt_labels_3d = np.array(
-            [
-                self.CLASSES.index(name) if name in self.CLASSES else -1
-                for name in gt_names_3d
-            ],
-            dtype=np.int64,
-        )
-
-        if self.with_velocity:
-            gt_velocity = np.asarray(
-                info.get("gt_velocity", np.zeros((len(gt_bboxes_3d), 2))),
-                dtype=np.float32,
-            )
-            if mask.size:
-                gt_velocity = gt_velocity[mask]
-            nan_mask = np.isnan(gt_velocity[:, 0]) if len(gt_velocity) else []
-            if len(gt_velocity):
-                gt_velocity[nan_mask] = [0.0, 0.0]
-            gt_bboxes_3d = np.concatenate([gt_bboxes_3d, gt_velocity], axis=-1)
-
-        gt_bboxes_3d = LiDARInstance3DBoxes(
-            gt_bboxes_3d,
-            box_dim=gt_bboxes_3d.shape[-1] if gt_bboxes_3d.ndim == 2 else 7,
-            origin=(0.5, 0.5, 0),
-        ).convert_to(self.box_mode_3d)
-        return dict(
-            gt_bboxes_3d=gt_bboxes_3d,
-            gt_labels_3d=gt_labels_3d,
-            gt_names=gt_names_3d,
-        )
 
     def evaluate_map(self, results):
         thresholds = torch.tensor([0.35, 0.4, 0.45, 0.5, 0.55, 0.6, 0.65])

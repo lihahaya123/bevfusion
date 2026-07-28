@@ -219,11 +219,23 @@ class GlobalRotScaleTrans:
                 data["radar"].translate(translation)
                 data["radar"].scale(scale)
 
-            gt_boxes = data["gt_bboxes_3d"]
-            rotation = rotation @ gt_boxes.rotate(theta).numpy()
-            gt_boxes.translate(translation)
-            gt_boxes.scale(scale)
-            data["gt_bboxes_3d"] = gt_boxes
+            if "gt_bboxes_3d" in data:
+                gt_boxes = data["gt_bboxes_3d"]
+                rotation = rotation @ gt_boxes.rotate(theta).numpy()
+                gt_boxes.translate(translation)
+                gt_boxes.scale(scale)
+                data["gt_bboxes_3d"] = gt_boxes
+            else:
+                cos_theta = np.cos(theta)
+                sin_theta = np.sin(theta)
+                rotation = np.array(
+                    [
+                        [cos_theta, -sin_theta, 0.0],
+                        [sin_theta, cos_theta, 0.0],
+                        [0.0, 0.0, 1.0],
+                    ],
+                    dtype=np.float32,
+                )
 
             transform[:3, :3] = rotation.T * scale
             transform[:3, 3] = translation * scale

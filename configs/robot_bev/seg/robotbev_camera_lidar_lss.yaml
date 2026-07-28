@@ -9,7 +9,6 @@ load_dim: 5
 use_dim: 5
 load_augmented: null
 
-object_classes: []
 map_classes:
   - floor
   - carpet
@@ -173,11 +172,6 @@ robot_train_pipeline:
     remove_close: false
     load_augmented: ${load_augmented}
   -
-    type: LoadAnnotations3D
-    with_bbox_3d: true
-    with_label_3d: true
-    with_attr_label: false
-  -
     type: ImageAug3D
     final_dim: ${image_size}
     resize_lim: ${augment2d.resize[0]}
@@ -216,14 +210,14 @@ robot_train_pipeline:
     type: PointShuffle
   -
     type: DefaultFormatBundle3D
-    classes: ${object_classes}
+    classes: []
+    with_gt: false
+    with_label: false
   -
     type: Collect3D
     keys:
       - img
       - points
-      - gt_bboxes_3d
-      - gt_labels_3d
       - gt_masks_bev
       - gt_supervision_mask_bev
     meta_keys:
@@ -258,11 +252,6 @@ robot_test_pipeline:
     test_mode: true
     load_augmented: ${load_augmented}
   -
-    type: LoadAnnotations3D
-    with_bbox_3d: true
-    with_label_3d: true
-    with_attr_label: false
-  -
     type: ImageAug3D
     final_dim: ${image_size}
     resize_lim: ${augment2d.resize[1]}
@@ -288,14 +277,14 @@ robot_test_pipeline:
     std: [0.229, 0.224, 0.225]
   -
     type: DefaultFormatBundle3D
-    classes: ${object_classes}
+    classes: []
+    with_gt: false
+    with_label: false
   -
     type: Collect3D
     keys:
       - img
       - points
-      - gt_bboxes_3d
-      - gt_labels_3d
       - gt_masks_bev
       - gt_supervision_mask_bev
     meta_keys:
@@ -316,7 +305,6 @@ data:
     dataset_root: ${dataset_root}
     ann_file: ${dataset_root + "bevfusion_infos_train.pkl"}
     pipeline: ${robot_train_pipeline}
-    object_classes: ${object_classes}
     map_classes: ${map_classes}
     modality: ${input_modality}
     test_mode: false
@@ -327,7 +315,6 @@ data:
     dataset_root: ${dataset_root}
     ann_file: ${dataset_root + "bevfusion_infos_val.pkl"}
     pipeline: ${robot_test_pipeline}
-    object_classes: ${object_classes}
     map_classes: ${map_classes}
     modality: ${input_modality}
     test_mode: false
@@ -338,7 +325,6 @@ data:
     dataset_root: ${dataset_root}
     ann_file: ${dataset_root + "bevfusion_infos_test.pkl"}
     pipeline: ${robot_test_pipeline}
-    object_classes: ${object_classes}
     map_classes: ${map_classes}
     modality: ${input_modality}
     test_mode: true

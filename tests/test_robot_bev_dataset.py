@@ -5,6 +5,7 @@ import pytest
 import torch
 
 from mmdet3d.datasets.pipelines.loading import LoadRobotBEVSegmentation
+from mmdet3d.datasets.pipelines.transforms_3d import GlobalRotScaleTrans
 from mmdet3d.datasets.robot_bev_dataset import RobotBEVDataset
 from tools.data_converter.robot_bev_converter import convert_split
 
@@ -23,7 +24,6 @@ def test_robot_bev_dataset_resolves_root_relative_paths(canonical_root):
         ann_file=str(root / "bevfusion_infos_train.pkl"),
         dataset_root=str(root),
         pipeline=[],
-        object_classes=[],
         map_classes=MAP_CLASSES,
         modality={"use_camera": True, "use_lidar": True, "use_radar": False},
         test_mode=True,
@@ -39,7 +39,19 @@ def test_robot_bev_dataset_resolves_root_relative_paths(canonical_root):
     )
     assert data["class_validity"].tolist() == [1, 1, 1, 1, 1, 1]
     assert data["sweeps"][0]["data_path"] == str(root / "scene_a/points/000000.bin")
-    assert data["ann_info"]["gt_labels_3d"].shape == (0,)
+    assert "ann_info" not in data
+
+    with (root / "bevfusion_infos_train.pkl").open("rb") as handle:
+        info = pickle.load(handle)["infos"][0]
+    detection_keys = {
+        "gt_boxes",
+        "gt_names",
+        "gt_velocity",
+        "num_lidar_pts",
+        "num_radar_pts",
+        "valid_flag",
+    }
+    assert detection_keys.isdisjoint(info)
 
 
 def test_load_robot_bev_segmentation_combines_supervision_masks(tmp_path):
@@ -83,7 +95,6 @@ def test_robot_bev_dataset_metadata_matches_current_infos(canonical_root):
         ann_file=str(root / "bevfusion_infos_train.pkl"),
         dataset_root=str(root),
         pipeline=[],
-        object_classes=[],
         map_classes=payload["metadata"]["map_classes"],
         test_mode=True,
     )
@@ -91,6 +102,19 @@ def test_robot_bev_dataset_metadata_matches_current_infos(canonical_root):
     assert dataset.version == "robot-bev-v4"
     assert tuple(dataset.map_classes) == MAP_CLASSES
     assert len(dataset) == 2
+
+
+def test_global_transform_supports_segmentation_samples_without_boxes():
+    transform = GlobalRotScaleTrans(
+        resize_lim=(1.0, 1.0),
+        rot_lim=(0.0, 0.0),
+        trans_lim=0.0,
+        is_train=True,
+    )
+
+    result = transform({})
+
+    np.testing.assert_array_equal(result["lidar_aug_matrix"], np.eye(4))
 
 
 def test_robot_bev_map_metrics_include_fixed_threshold_and_boundary_scores():

@@ -81,14 +81,14 @@ model:
         xbound: [0.0, 3.04, 0.02]
         ybound: [-1.52, 1.52, 0.02]
         zbound: [-0.5, 2.0, 2.5]
-        dbound: [0.1, 5.0, 0.05]
+        dbound: [0.1, 4.0, 0.1]
         downsample: 2
     lidar:
       voxelize:
-        max_num_points: 10
+        max_num_points: 8
         point_cloud_range: ${point_cloud_range}
         voxel_size: ${voxel_size}
-        max_voxels: [60000, 90000]
+        max_voxels: [50000, 75000]
       backbone:
         type: SparseEncoder
         in_channels: 5

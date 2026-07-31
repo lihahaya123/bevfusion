@@ -4,7 +4,7 @@ Code written by Alex Lang and Oscar Beijbom, 2018.
 Licensed under MIT License [see LICENSE].
 """
 
-from typing import Any, Dict
+from typing import Any, Dict, Optional, Sequence
 
 import torch
 from mmcv.cnn import build_norm_layer
@@ -14,7 +14,12 @@ from torch.nn import functional as F
 from mmdet3d.models.builder import build_backbone
 from mmdet.models import BACKBONES
 
-__all__ = ["PillarFeatureNet", "PointPillarsScatter", "PointPillarsEncoder"]
+__all__ = [
+    "PillarFeatureNet",
+    "PointPillarsScatter",
+    "PillarBEVEncoder",
+    "PointPillarsEncoder",
+]
 
 
 def get_paddings_indicator(actual_num, max_num, axis=0):
@@ -240,19 +245,114 @@ class PointPillarsScatter(nn.Module):
         return batch_canvas
 
 
+class DepthwiseSeparableBlock(nn.Module):
+    """Depthwise-separable 2D convolution used by the pillar BEV encoder."""
+
+    def __init__(
+        self,
+        in_channels: int,
+        out_channels: int,
+        stride: int,
+        norm_cfg: Optional[Dict[str, Any]] = None,
+    ):
+        super().__init__()
+        if norm_cfg is None:
+            norm_cfg = dict(type="BN2d", eps=1e-3, momentum=0.01)
+
+        self.depthwise = nn.Conv2d(
+            in_channels,
+            in_channels,
+            kernel_size=3,
+            stride=stride,
+            padding=1,
+            groups=in_channels,
+            bias=False,
+        )
+        self.depthwise_norm = build_norm_layer(norm_cfg, in_channels)[1]
+        self.pointwise = nn.Conv2d(
+            in_channels,
+            out_channels,
+            kernel_size=1,
+            bias=False,
+        )
+        self.pointwise_norm = build_norm_layer(norm_cfg, out_channels)[1]
+        self.activate = nn.ReLU(inplace=True)
+
+    def forward(self, x):
+        x = self.activate(self.depthwise_norm(self.depthwise(x)))
+        x = self.activate(self.pointwise_norm(self.pointwise(x)))
+        return x
+
+
+@BACKBONES.register_module()
+class PillarBEVEncoder(nn.Module):
+    """Lightweight 2D encoder for the dense pseudo-image from pillar scatter."""
+
+    def __init__(
+        self,
+        in_channels: int = 64,
+        channels: Sequence[int] = (64, 128, 128),
+        strides: Sequence[int] = (2, 2, 1),
+        norm_cfg: Optional[Dict[str, Any]] = None,
+    ):
+        super().__init__()
+        if len(channels) == 0:
+            raise ValueError("channels must contain at least one stage")
+        if len(channels) != len(strides):
+            raise ValueError(
+                "channels and strides must have the same length, "
+                f"got {len(channels)} and {len(strides)}"
+            )
+        if any(stride < 1 for stride in strides):
+            raise ValueError(f"all strides must be positive, got {strides}")
+
+        blocks = []
+        stage_in_channels = in_channels
+        for stage_out_channels, stride in zip(channels, strides):
+            blocks.append(
+                DepthwiseSeparableBlock(
+                    stage_in_channels,
+                    stage_out_channels,
+                    stride,
+                    norm_cfg=norm_cfg,
+                )
+            )
+            stage_in_channels = stage_out_channels
+
+        self.in_channels = in_channels
+        self.out_channels = stage_in_channels
+        self.blocks = nn.Sequential(*blocks)
+
+    def forward(self, x):
+        if x.dim() != 4:
+            raise ValueError(
+                "PillarBEVEncoder expects a 4D tensor [B, C, H, W], "
+                f"got shape {tuple(x.shape)}"
+            )
+        return self.blocks(x)
+
+
 @BACKBONES.register_module()
 class PointPillarsEncoder(nn.Module):
     def __init__(
         self,
         pts_voxel_encoder: Dict[str, Any],
         pts_middle_encoder: Dict[str, Any],
+        pts_bev_encoder: Optional[Dict[str, Any]] = None,
         **kwargs,
     ):
         super().__init__()
         self.pts_voxel_encoder = build_backbone(pts_voxel_encoder)
         self.pts_middle_encoder = build_backbone(pts_middle_encoder)
+        self.pts_bev_encoder = (
+            build_backbone(pts_bev_encoder)
+            if pts_bev_encoder is not None
+            else None
+        )
 
     def forward(self, feats, coords, batch_size, sizes):
         x = self.pts_voxel_encoder(feats, sizes, coords)
         x = self.pts_middle_encoder(x, coords, batch_size)
+        if self.pts_bev_encoder is not None:
+            x = self.pts_bev_encoder(x)
         return x

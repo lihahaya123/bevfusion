@@ -106,21 +106,50 @@ class BEVSegmentationHead(nn.Module):
         grid_transform: Dict[str, Any],
         classes: List[str],
         loss: str,
+        hidden_channels: int = 64,
+        refine_channels: int = 16,
     ) -> None:
         super().__init__()
+        if hidden_channels <= 0:
+            raise ValueError("hidden_channels must be positive")
+        if refine_channels <= 0:
+            raise ValueError("refine_channels must be positive")
+
         self.in_channels = in_channels
+        self.hidden_channels = hidden_channels
+        self.refine_channels = refine_channels
         self.classes = classes
         self.loss = loss
 
         self.transform = BEVGridTransform(**grid_transform)
-        self.classifier = nn.Sequential(
-            nn.Conv2d(in_channels, in_channels, 3, padding=1, bias=False),
-            nn.BatchNorm2d(in_channels),
+        self.projection = nn.Sequential(
+            nn.Conv2d(in_channels, hidden_channels, 1, bias=False),
+            nn.BatchNorm2d(hidden_channels),
             nn.ReLU(True),
-            nn.Conv2d(in_channels, in_channels, 3, padding=1, bias=False),
-            nn.BatchNorm2d(in_channels),
+        )
+        self.low_res_refine = nn.Sequential(
+            nn.Conv2d(
+                hidden_channels,
+                hidden_channels,
+                3,
+                padding=1,
+                groups=hidden_channels,
+                bias=False,
+            ),
+            nn.BatchNorm2d(hidden_channels),
             nn.ReLU(True),
-            nn.Conv2d(in_channels, len(classes), 1),
+            nn.Conv2d(hidden_channels, hidden_channels, 1, bias=False),
+            nn.BatchNorm2d(hidden_channels),
+        )
+        self.low_res_activation = nn.ReLU(True)
+        self.classifier = nn.Conv2d(hidden_channels, len(classes), 1)
+        self.boundary_refine = nn.Sequential(
+            nn.Conv2d(
+                len(classes), refine_channels, 3, padding=1, bias=False
+            ),
+            nn.BatchNorm2d(refine_channels),
+            nn.ReLU(True),
+            nn.Conv2d(refine_channels, len(classes), 3, padding=1),
         )
 
     def forward(
@@ -132,8 +161,11 @@ class BEVSegmentationHead(nn.Module):
         if isinstance(x, (list, tuple)):
             x = x[0]
 
-        x = self.transform(x)
+        x = self.projection(x)
+        x = self.low_res_activation(x + self.low_res_refine(x))
         x = self.classifier(x)
+        x = self.transform(x)
+        x = x + self.boundary_refine(x)
 
         if self.training:
             if target is None:

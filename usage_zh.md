@@ -537,6 +537,21 @@ torchpack dist-run -np 1 python tools/test.py \
   dataset_root=/data/
 ```
 
+实际部署测试
+```bash
+python tools/benchmark_robot_bev_deployment.py \
+  configs/robot_bev/seg/b1_lidar_pillar.yaml \
+  /path/to/b1_checkpoint.pth \
+  --mode both \
+  --batch-size 1 \
+  --preload-batches 16 \
+  --warmup 50 \
+  --iterations 500 \
+  --precision config \
+  --output /path/to/b1_deployment_benchmark.json \
+  dataset_root=/data/
+```
+
 其中：
 
 ```text

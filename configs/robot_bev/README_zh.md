@@ -137,6 +137,82 @@ torchpack dist-run -np 1 python tools/test.py \
 分辨率为 2 cm，因此边界容差对应 2 cm。模型延迟统计会排除配置指定的前
 5 个 warmup batch，端到端吞吐仍覆盖完整测试流程。
 
+## 部署性能专项测试
+
+`tools/benchmark_robot_bev_deployment.py` 用于排除传感器采集、磁盘读取、
+dataset pipeline 和全测试集结果累计后，单独测量部署推理性能。它会先把
+若干个经过 pipeline 的 CPU batch 预加载到内存，再分别执行：
+
+```text
+model-only:
+  已在 GPU 的 batch -> 模型推理 -> CPU 结果
+
+end-to-end:
+  已在内存的 CPU batch -> GPU 传输 -> 模型推理 -> CPU 结果
+```
+
+两种模式都逐次释放输出，不会像完整测试流程一样累计整个测试集结果。
+
+推荐使用 batch size 1、配置中的 FP16 设置、50 次预热和 500 次正式测试：
+
+```bash
+python tools/benchmark_robot_bev_deployment.py \
+  configs/robot_bev/seg/robotbev_camera_lidar_lss.yaml \
+  work_dirs/robot_bev/camera_lidar_lss/best_robotbev_map_iou_max_epoch_14.pth \
+  --mode both \
+  --batch-size 1 \
+  --preload-batches 16 \
+  --warmup 50 \
+  --iterations 500 \
+  --precision config \
+  --output work_dirs/robot_bev/camera_lidar_lss/deployment_benchmark.json
+```
+
+数据目录不在配置默认位置时，可以继续使用 torchpack 配置覆盖：
+
+```bash
+python tools/benchmark_robot_bev_deployment.py \
+  configs/robot_bev/seg/robotbev_camera_lidar_lss.yaml \
+  /output/best_robotbev_map_iou_max_epoch_14.pth \
+  --mode both \
+  dataset_root=/data/
+```
+
+JSON 报告中的关键字段：
+
+```text
+static_memory.allocated_mb
+  模型加载后、尚未执行推理的静态 CUDA tensor 显存
+
+*.memory.idle_allocated_mb
+  对应模式预热后的常驻显存；model-only 模式包含常驻 GPU 输入
+
+*.memory.forward_increment_allocated_mb
+  正式推理相对 idle 额外产生的峰值显存，适合比较轻量化效果
+
+*.memory.peak_allocated_mb
+  流式推理 CUDA tensor 总峰值
+
+*.memory.peak_reserved_mb
+  PyTorch caching allocator 的总申请峰值
+
+*.memory.after_run_device_used_mb
+  正式测试结束后整张 GPU 的实际已用显存，包含 CUDA 上下文和其他进程；
+  在独占 GPU 上运行时最接近部署侧 nvidia-smi 读数
+
+*.performance.frames_per_second
+  按实际输出样本数计算的 FPS
+
+*.latency.mean / p50 / p95 / p99
+  单个 batch 的延迟分布
+```
+
+默认会从输入中移除分割标签和检测标签，以模拟无 GT 的真实部署。只有复现
+旧测试口径时才使用 `--keep-supervision`。`--precision config` 会跟随配置
+里的 `fp16` 设置；比较多个模型时必须保持 precision、batch size、输入数据、
+预热次数和测试次数完全一致。读取 `device_used_mb` 前还应确保目标 GPU 没有
+其他任务，否则该字段会把其他进程的显存也计算在内。
+
 ## 早停
 
 当前训练配置默认启用验证集早停：

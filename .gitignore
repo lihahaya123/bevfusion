@@ -147,3 +147,5 @@ results/
 checkpoint/
 run_bash/
 defense/
+.codex/
+.agents/

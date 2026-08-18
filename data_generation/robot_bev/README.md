@@ -25,17 +25,12 @@ its root-relative `robot_infos_<split>.pkl` files are the source of truth.
 | `geometry_checks.py` | Camera projection, BEV orientation, and sweep diagnostics |
 | `sources/habitat_common.py` | Shared Habitat sensor, pose, navigation, and depth helpers |
 | `sources/replica.py` | Replica asset preflight, semantic mapping, rendering, and orchestration |
+| `projection.py` | Source-independent OpenCV depth projection and BEV masking helpers |
+| `sources/selfcollect.py` | Real left-camera RGB/depth/semantic source adapter |
 | `cli/generate_replica.py` | Replica generation entry point |
+| `cli/generate_selfcollect.py` | Self-collected left-camera generation entry point |
 | `cli/validate_dataset.py` | JSON validation and diagnostic entry point |
 | `configs/` | Tracked 18-scene list and 14/2/2 split example |
-
-## Start here
-
-- [Usage guide for rendering and conversion](docs/usage_zh.md)
-- [Schema and coordinates](docs/schema_v4.md)
-- [Replica generation runbook](docs/habitat_replica.md)
-- [Adding a source adapter](docs/add_new_source.md)
-- [Validation and geometry gates](docs/quality_checks.md)
 
 Generation success alone is not a release gate. Validate the complete root and
 every split, inspect representative geometry bundles, run the downstream

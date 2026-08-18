@@ -1,0 +1,14 @@
+{
+  "id_to_class": {
+    "0": "carpet",
+    "1": "furniture",
+    "2": "door",
+    "4": "floor",
+    "6": "clutter",
+    "10": "furniture",
+    "12": "clutter",
+    "15": "wall",
+    "18": "furniture"
+  },
+  "ignore_ids": [3, 5, 7, 8, 9, 11, 13, 14, 16, 17, 19, 255]
+}

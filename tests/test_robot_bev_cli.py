@@ -1,5 +1,4 @@
 import json
-import re
 import subprocess
 import sys
 from pathlib import Path
@@ -49,19 +48,6 @@ SPLITS = {
     "val": ["apartment_2", "office_1"],
     "test": ["frl_apartment_5", "office_4"],
 }
-SMOKE_SCENES = (
-    "hotel_0",
-    "office_0",
-    "office_1",
-    "office_2",
-    "office_3",
-    "office_4",
-    "room_0",
-    "room_1",
-    "room_2",
-)
-
-
 def _build_dataset(root: Path, scenes=("scene_a",)) -> None:
     writer = RobotBEVWriter(
         root=root,
@@ -232,66 +218,37 @@ def test_replica_scene_examples_are_exact_and_disjoint():
     assert set(assigned) == set(scene_lines)
 
 
-def _bash_blocks(markdown: str):
-    return re.findall(r"```bash\n(.*?)```", markdown, flags=re.DOTALL)
-
-
-def test_documented_commands_match_supported_smoke_and_production_contracts():
-    docs = {
-        path: path.read_text(encoding="utf-8")
-        for path in (
-            Path("data_generation/robot_bev/README.md"),
-            Path("data_generation/robot_bev/docs/schema_v4.md"),
-            Path("data_generation/robot_bev/docs/habitat_replica.md"),
-            Path("data_generation/robot_bev/docs/add_new_source.md"),
-            Path("data_generation/robot_bev/docs/quality_checks.md"),
-        )
-    }
-    command_text = "\n".join(
-        block for markdown in docs.values() for block in _bash_blocks(markdown)
-    )
+def test_generation_scripts_match_supported_contracts():
+    replica = Path(
+        "data_generation/robot_bev/bash/generation_replica.sh"
+    ).read_text(encoding="utf-8")
+    selfcollect = Path(
+        "data_generation/robot_bev/bash/generation_selfcollect.sh"
+    ).read_text(encoding="utf-8")
+    command_text = replica + "\n" + selfcollect
 
     assert "--save-visualization" not in command_text
     assert "--save-ply" not in command_text
     assert "/mnt/u/ubuntu/workspace/dataset" not in command_text
 
-    generation_commands = [
-        block
-        for block in _bash_blocks(
-            docs[Path("data_generation/robot_bev/docs/habitat_replica.md")]
-        )
-        if "cli.generate_replica" in block
-    ]
-    assert len(generation_commands) == 3
-    quick, smoke, production = generation_commands
-    for command in generation_commands:
-        assert "--gpu-id 0" in command
-        assert "--disable-physics" in command
-        assert "--recompute-navmesh" in command
-        assert "--split-file data_generation/robot_bev/configs/replica_splits.example.json" in command
-
-    assert "--scene office_1" in quick
-    assert "--num-frames 10" in quick
-    assert "--dataset-id replica_robot_bev_v4_quick" in quick
-
-    assert "--dataset-id replica_robot_bev_v4" in smoke
-    assert "--num-frames 10" in smoke
-    assert "--scenes " in smoke
-    assert all(scene in smoke for scene in SMOKE_SCENES)
-
-    assert "--dataset-id replica_robot_bev_v4" in production
-    assert "--scenes-file data_generation/robot_bev/configs/replica_scenes.txt" in production
-    assert "--num-frames 600" in production
-
-    validation_commands = [
-        block
-        for block in _bash_blocks(
-            docs[Path("data_generation/robot_bev/docs/habitat_replica.md")]
-        )
-        if "cli.validate_dataset" in block
-    ]
-    validation_text = "\n".join(validation_commands)
+    assert "cli.generate_replica" in replica
+    assert "--dataset-id replica_robot_bev_v4" in replica
+    assert "--scenes-file" in replica
+    assert "replica_scenes.txt" in replica
+    assert "--num-frames 600" in replica
+    assert "--gpu-id 0" in replica
+    assert "--disable-physics" in replica
+    assert "--recompute-navmesh" in replica
     for split in ("train", "val", "test"):
-        assert f"--split {split}" in validation_text
-    for scene in ("office_0", "office_1", "office_4"):
-        assert f"--geometry-scene {scene}" in validation_text
+        assert f"--split {split}" in replica
+
+    assert "cli.generate_selfcollect" in selfcollect
+    assert "--dataset-id selfcollect_v1" in selfcollect
+    assert "--semantic-map" in selfcollect
+    assert "selfcollect_semantic_map.json" in selfcollect
+    assert "--allow-lossy-labels" in selfcollect
+    assert "--split-mode sampled" in selfcollect
+    assert "--split-ratios 7 1 1" in selfcollect
+    assert "cli.validate_dataset" in selfcollect
+    assert "--geometry-all-scenes" in selfcollect
+    assert "--split all" in selfcollect

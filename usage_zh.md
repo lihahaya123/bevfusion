@@ -385,12 +385,6 @@ source-specific assets
 9. generation fingerprint
 ```
 
-更详细的接入要求见：
-
-```text
-data_generation/robot_bev/docs/add_new_source.md
-```
-
 ## 常见检查点
 
 开始训练前至少确认：
